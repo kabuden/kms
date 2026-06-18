@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>주식 예측 멀티에이전트 대시보드</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header>
+    <h1>📈 주식 예측 멀티에이전트</h1>
+    <p class="sub">미국·한국 경제뉴스 수집 → 5개 예측 → 평가 → 발전 루프</p>
+  </header>
+
+  <section class="banner" id="trust-banner">신뢰도 정보를 불러오는 중…</section>
+
+  <section class="grid">
+    <div class="card"><div class="metric" id="m-cycles">–</div><div class="label">학습 사이클</div></div>
+    <div class="card"><div class="metric" id="m-ens-acc">–</div><div class="label">앙상블 정확도</div></div>
+    <div class="card"><div class="metric" id="m-roll-acc">–</div><div class="label">롤링 정확도</div></div>
+    <div class="card"><div class="metric" id="m-calib">–</div><div class="label">보정 신뢰도</div></div>
+  </section>
+
+  <div class="actions">
+    <button id="btn-run">▶ 새 사이클 실행 (예측+평가+발전)</button>
+    <button id="btn-run10">⏩ 10 사이클 학습</button>
+    <span id="run-status"></span>
+  </div>
+
+  <section>
+    <h2>오늘의 앙상블 예측 <span class="muted" id="latest-date"></span></h2>
+    <table id="latest-table">
+      <thead><tr><th>종목</th><th>시장</th><th>방향</th><th>기대수익률</th><th>신뢰도</th><th>실제</th><th>적중</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <section class="two-col">
+    <div>
+      <h2>예측 에이전트 성과 (5인)</h2>
+      <table id="predictor-table">
+        <thead><tr><th>에이전트</th><th>적중/표본</th><th>적중률</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div>
+      <h2>에이전트 명단</h2>
+      <div id="roster"></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>종목별 5개 예측 상세</h2>
+    <div id="detail"></div>
+  </section>
+
+  <section>
+    <h2>발전 에이전트 로그 (3인)</h2>
+    <div id="improver-logs"></div>
+  </section>
+
+  <footer>
+    <p class="muted">⚠️ 본 시스템은 연구/학습용입니다. trade_ready 플래그가 켜지기 전(또는 그 이후에도)
+    실제 투자 판단의 유일한 근거로 사용하지 마세요. 투자 책임은 본인에게 있습니다.</p>
+  </footer>
+
+  <script src="/app.js"></script>
+</body>
+</html>
