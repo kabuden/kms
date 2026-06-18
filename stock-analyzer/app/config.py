@@ -42,7 +42,9 @@ class Settings:
     llm_model: str = field(
         default_factory=lambda: os.environ.get("SA_LLM_MODEL", "claude-fable-5")
     )
-    db_path: Path = field(default_factory=lambda: DATA_DIR / "stock.db")
+    # 기본은 ./data, 영구 디스크를 붙였다면 SA_DB_DIR 로 그 경로를 지정한다.
+    db_path: Path = field(default_factory=lambda: Path(
+        os.environ.get("SA_DB_DIR", str(DATA_DIR))) / "stock.db")
 
     # 실거래 신뢰도 게이트: 아래 조건을 모두 충족하면 trade_ready=True
     min_cycles_for_trust: int = field(

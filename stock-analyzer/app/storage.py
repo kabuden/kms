@@ -74,6 +74,7 @@ def _now() -> str:
 class Storage:
     def __init__(self, db_path: Path):
         self.db_path = db_path
+        db_path.parent.mkdir(parents=True, exist_ok=True)
         self.conn = sqlite3.connect(str(db_path))
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(SCHEMA)

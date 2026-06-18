@@ -188,9 +188,31 @@ class Handler(BaseHTTPRequestHandler):
         return {"cycle_date": cycle_date, "rows": rows}
 
 
+def _seed_if_empty(store: Storage) -> None:
+    """콜드 스타트 시 대시보드가 비어 보이지 않도록 합성 백테스트로 시드한다.
+
+    SA_SEED_CYCLES > 0 이고 아직 사이클이 없을 때만 동작한다. 무료 호스팅은
+    디스크가 비휘발성이 아니라 재시작마다 DB가 초기화되므로, 이 옵션으로
+    첫 화면에 학습 곡선을 채워 둘 수 있다(모두 오프라인 합성 데이터).
+    """
+    import os
+    from datetime import date, timedelta
+
+    n = int(os.environ.get("SA_SEED_CYCLES", "0") or "0")
+    if n <= 0 or store.cycle_dates():
+        return
+    orch = Orchestrator(store)
+    start = date.today() - timedelta(days=n)
+    for i in range(n):
+        orch.run_full_cycle((start + timedelta(days=i)).isoformat())
+    print(f"🌱 시드 완료: {n} 사이클(합성)")
+
+
 def serve(host: str = "0.0.0.0", port: int = 8000) -> None:
     # DB 스키마 초기화(연결은 요청마다 새로 연다)
-    Storage(SETTINGS.db_path).close()
+    store = Storage(SETTINGS.db_path)
+    _seed_if_empty(store)
+    store.close()
     httpd = ThreadingHTTPServer((host, port), Handler)
     print(f"📈 Stock Analyzer 대시보드: http://{host}:{port}  "
           f"(offline={SETTINGS.offline}, llm={SETTINGS.use_llm})")

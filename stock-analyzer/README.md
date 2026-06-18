@@ -75,6 +75,18 @@ export ANTHROPIC_API_KEY=sk-...
 
 ---
 
+## 📱 모바일에서 쓰기 (무료 배포)
+
+PC를 계속 켜둘 필요 없이, **무료 클라우드에 한 번만 배포**하면 휴대폰에서
+24시간 접속할 수 있습니다. 저장소 루트의 `render.yaml` 로 Render에 바로 올라가며
+**API 키·결제 불필요**입니다. 단계별 안내: [`DEPLOY_RENDER.md`](./DEPLOY_RENDER.md)
+
+> 서버는 `$PORT` 환경변수와 `0.0.0.0` 바인딩을 지원하므로 Render·Railway·Fly.io
+> 등 대부분의 PaaS에 그대로 올라갑니다. 콜드 스타트 시 `SA_SEED_CYCLES` 만큼
+> 합성 학습을 미리 채워 첫 화면이 비지 않습니다.
+
+---
+
 ## 🎯 신뢰도 게이트 (실거래 사용 기준)
 
 `confidence_calibrator` 가 아래 조건을 **모두** 만족할 때만

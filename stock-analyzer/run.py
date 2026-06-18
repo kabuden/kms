@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from datetime import date, datetime, timedelta
 
 from app.config import SETTINGS
@@ -95,7 +96,8 @@ def main():
 
     p = sub.add_parser("serve", help="웹 대시보드 실행")
     p.add_argument("--host", default="0.0.0.0")
-    p.add_argument("--port", type=int, default=8000)
+    # Render 등 PaaS 는 PORT 환경변수로 포트를 지정한다.
+    p.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8000")))
     p.set_defaults(func=cmd_serve)
 
     p = sub.add_parser("cycle", help="한 사이클 실행")
