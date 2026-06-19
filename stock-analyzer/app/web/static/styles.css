@@ -38,6 +38,7 @@ table { width: 100%; border-collapse: collapse; font-size: 14px; }
 th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
 th { color: var(--muted); font-weight: 600; }
 .up { color: var(--up); } .down { color: var(--down); } .flat { color: var(--flat); }
+.owned-star { font-size: 12px; }
 .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
 .pill {
   display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px;

@@ -153,8 +153,9 @@ async function loadLatest() {
     const deltaCell = delta === null || delta === undefined ? "–"
       : `<span class="${delta > 0 ? "up" : delta < 0 ? "down" : "flat"}">${pct(delta)}</span>`
         + (row.direction_changed ? ' <span class="pill">방향전환</span>' : "");
+    const ownedStar = row.owned ? ' <span class="owned-star" title="보유 종목">⭐</span>' : "";
     tb.insertAdjacentHTML("beforeend",
-      `<tr><td>${row.name}</td><td>${row.market}</td>
+      `<tr><td>${row.name}${ownedStar}</td><td>${row.market}</td>
        <td>${baseCell}</td>
        <td class="${dirClass(e.direction)}"><b>${dirLabel(e.direction)} ${pct(e.expected_return_pct)}</b></td>
        <td>${deltaCell}</td>
@@ -336,9 +337,10 @@ async function loadPortfolio() {
     if (!list || !list.length) return `<p class="muted">매수 후보 없음 (신뢰도 45% 미달 또는 하락 예측)</p>`;
     return list.map(c => {
       const barW = Math.min(100, c.weight_pct / 30 * 100).toFixed(0);
+      const star = c.owned ? ' <span class="owned-star" title="보유 종목">⭐</span>' : "";
       return `<div class="portfolio-card">
         <div class="pc-header">
-          <span class="pc-name">${c.name}</span>
+          <span class="pc-name">${c.name}${star}</span>
           <span class="pc-weight ${d.trade_ready ? "up" : "flat"}">${c.weight_pct}%</span>
         </div>
         <div class="pc-detail">
@@ -354,7 +356,7 @@ async function loadPortfolio() {
   const renderAvoid = (list) => {
     if (!list || !list.length) return `<p class="muted">회피 후보 없음</p>`;
     return list.map(c =>
-      `<span class="pill down">${c.name} ▼ ${pct(c.expected_return_pct)} (신뢰 ${Math.round(c.confidence*100)}%)</span>`
+      `<span class="pill down">${c.name}${c.owned ? " ⭐" : ""} ▼ ${pct(c.expected_return_pct)} (신뢰 ${Math.round(c.confidence*100)}%)</span>`
     ).join(" ");
   };
 

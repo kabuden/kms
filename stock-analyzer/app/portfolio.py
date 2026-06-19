@@ -75,6 +75,7 @@ def suggest(store: Storage, cycle_date: str | None = None) -> dict:
             "symbol": sym,
             "name": spec.name if spec else sym,
             "market": spec.market if spec else "",
+            "owned": spec.owned if spec else False,
             "direction": direction,
             "expected_return_pct": ret,
             "confidence": round(conf, 3),

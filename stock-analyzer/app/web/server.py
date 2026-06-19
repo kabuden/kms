@@ -303,6 +303,8 @@ class Handler(BaseHTTPRequestHandler):
                 "symbol": sym,
                 "name": spec.name if spec else sym,
                 "market": spec.market if spec else "",
+                "sector": spec.sector if spec else "",
+                "owned": spec.owned if spec else False,
                 "base_price": official.get("base_price"),
                 "first": first,                  # 한국개장전(최초) 예측
                 "ensemble": official,            # 미국개장후(공식) 예측

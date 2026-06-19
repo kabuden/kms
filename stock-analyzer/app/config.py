@@ -29,6 +29,7 @@ class TickerSpec:
     name: str            # 표시 이름
     market: str          # "US" | "KR"
     sector: str = ""     # GICS 섹터 (한국어)
+    owned: bool = False  # 사용자가 실제 보유 중인 종목(대시보드에 ⭐ 표시)
 
 
 # ── 하루 4분석 시점 (한국장 중심) ─────────────────────────────
@@ -118,19 +119,27 @@ class Settings:
         # ── 미국 (지수) ──
         TickerSpec("^GSPC", "S&P 500", "US", "지수"),
         TickerSpec("^IXIC", "나스닥", "US", "지수"),
-        # ── 미국 (정보기술) ──
+        # ── 미국 (정보기술·반도체) ──
         TickerSpec("AAPL", "Apple", "US", "정보기술"),
         TickerSpec("MSFT", "Microsoft", "US", "정보기술"),
-        TickerSpec("NVDA", "NVIDIA", "US", "정보기술·AI반도체"),
+        TickerSpec("NVDA", "NVIDIA", "US", "정보기술·AI반도체", owned=True),
         TickerSpec("AMZN", "Amazon", "US", "임의소비재·클라우드"),
-        TickerSpec("GOOGL", "Alphabet", "US", "커뮤니케이션"),
-        TickerSpec("TSLA", "Tesla", "US", "임의소비재·전기차"),
+        TickerSpec("GOOGL", "Alphabet A", "US", "커뮤니케이션"),
+        TickerSpec("GOOG", "Alphabet C", "US", "커뮤니케이션", owned=True),
+        TickerSpec("TSLA", "Tesla", "US", "임의소비재·전기차", owned=True),
+        TickerSpec("LRCX", "Lam Research", "US", "정보기술·반도체장비", owned=True),
+        TickerSpec("SNDK", "SanDisk", "US", "정보기술·메모리", owned=True),
+        TickerSpec("CLS", "Celestica", "US", "정보기술·전자제조", owned=True),
+        TickerSpec("IONQ", "IonQ", "US", "정보기술·양자컴퓨팅", owned=True),
         # ── 미국 (금융·헬스케어) ──
         TickerSpec("JPM", "JP모건", "US", "금융"),
         TickerSpec("LLY", "Eli Lilly", "US", "헬스케어"),
-        # ── 미국 (에너지·원자재) ──
+        # ── 미국 (에너지·유틸리티) ──
         TickerSpec("XOM", "ExxonMobil", "US", "에너지"),
-        TickerSpec("GLD", "SPDR 금 ETF", "US", "원자재·금"),
+        TickerSpec("CEG", "Constellation Energy", "US", "유틸리티·원자력", owned=True),
+        # ── 미국 (원자재 ETF) ──
+        TickerSpec("GLD", "SPDR 금 ETF", "US", "원자재·금", owned=True),
+        TickerSpec("SLV", "iShares 은 ETF", "US", "원자재·은", owned=True),
         TickerSpec("FCX", "Freeport-McMoRan", "US", "원자재·구리"),
         # ── 한국 (지수) ──
         TickerSpec("^KS11", "코스피", "KR", "지수"),
@@ -145,6 +154,7 @@ class Settings:
         # ── 한국 (소재·에너지) ──
         TickerSpec("373220.KS", "LG에너지솔루션", "KR", "소재·배터리"),
         TickerSpec("005490.KS", "POSCO홀딩스", "KR", "소재·철강"),
+        TickerSpec("010950.KS", "S-Oil", "KR", "에너지·정유", owned=True),
         # ── 한국 (금융·헬스케어·엔터) ──
         TickerSpec("105560.KS", "KB금융", "KR", "금융"),
         TickerSpec("068270.KS", "셀트리온", "KR", "헬스케어·바이오"),
