@@ -25,8 +25,30 @@ def _store() -> Storage:
 
 
 def cmd_serve(args):
+    from app.scheduler import DailyScheduler
     from app.web.server import serve
+    if not args.no_scheduler:
+        scheduler = DailyScheduler()
+        scheduler.start()
     serve(host=args.host, port=args.port)
+
+
+def cmd_scheduler(args):
+    """독립형 스케줄러 (웹서버 없이 백그라운드 실행)."""
+    import signal
+    import time
+    from app.scheduler import DailyScheduler
+    scheduler = DailyScheduler()
+    scheduler.start()
+    # SIGINT/SIGTERM 으로 종료
+    def _stop(sig, frame):
+        print("\n스케줄러 종료 중...")
+        scheduler.stop()
+    signal.signal(signal.SIGINT, _stop)
+    signal.signal(signal.SIGTERM, _stop)
+    print("스케줄러 단독 실행 중. Ctrl+C 로 종료하세요.")
+    while scheduler.is_running():
+        time.sleep(5)
 
 
 def cmd_cycle(args):
@@ -98,7 +120,12 @@ def main():
     p.add_argument("--host", default="0.0.0.0")
     # Render 등 PaaS 는 PORT 환경변수로 포트를 지정한다.
     p.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8000")))
+    p.add_argument("--no-scheduler", action="store_true",
+                   help="자동 스케줄러 비활성화 (수동 실행 전용)")
     p.set_defaults(func=cmd_serve)
+
+    p = sub.add_parser("scheduler", help="자동 스케줄러 단독 실행 (웹서버 없이)")
+    p.set_defaults(func=cmd_scheduler)
 
     p = sub.add_parser("cycle", help="한 사이클 실행")
     p.add_argument("date", nargs="?", default=None)

@@ -20,6 +20,10 @@ from .models import (
 )
 
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS scheduler_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    cycle_date TEXT, slot INTEGER, status TEXT, detail TEXT, ran_at TEXT
+);
 CREATE TABLE IF NOT EXISTS news (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     cycle_date TEXT, market TEXT, source TEXT, title TEXT,
@@ -367,5 +371,43 @@ class Storage:
         rows = self.conn.execute(
             "SELECT cycle_date, overall_accuracy, rolling_accuracy,"
             " calibrated_confidence, trade_ready FROM confidence ORDER BY cycle_date"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    # ---- 스케줄러 ----
+    def slot_done(self, cycle_date: str, slot: int) -> bool:
+        """스케줄 슬롯 완료 여부를 기존 데이터로 판단한다.
+
+        slot 1: 기본(baseline) 앙상블 예측 존재
+        slot 2: 수정(revised) 앙상블 예측 존재 (뉴스 수집 + 수정 예측 포함)
+        slot 3: 신뢰도 기록 존재 (평가·발전 완료)
+        """
+        if slot == 1:
+            return bool(self.conn.execute(
+                "SELECT 1 FROM ensemble_predictions"
+                " WHERE cycle_date=? AND stage='baseline' LIMIT 1",
+                (cycle_date,)).fetchone())
+        if slot == 2:
+            return bool(self.conn.execute(
+                "SELECT 1 FROM ensemble_predictions"
+                " WHERE cycle_date=? AND stage='revised' LIMIT 1",
+                (cycle_date,)).fetchone())
+        if slot == 3:
+            return bool(self.conn.execute(
+                "SELECT 1 FROM confidence WHERE cycle_date=? LIMIT 1",
+                (cycle_date,)).fetchone())
+        return False
+
+    def log_scheduler(self, cycle_date: str, slot: int, status: str,
+                      detail: str = "") -> None:
+        self.conn.execute(
+            "INSERT INTO scheduler_log (cycle_date, slot, status, detail, ran_at)"
+            " VALUES (?,?,?,?,?)", (cycle_date, slot, status, detail, _now()),
+        )
+        self.conn.commit()
+
+    def scheduler_history(self, limit: int = 30) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT * FROM scheduler_log ORDER BY id DESC LIMIT ?", (limit,)
         ).fetchall()
         return [dict(r) for r in rows]

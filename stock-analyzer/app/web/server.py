@@ -10,7 +10,9 @@ JSON API + 정적 파일을 함께 제공한다. FastAPI 등 외부 의존성이
   GET /api/history         정확도/신뢰도 추이
   GET /api/predictors      예측 에이전트별 적중률
   GET /api/improver-logs   발전 에이전트 로그
+  GET /api/schedule        오늘 스케줄 현황 + 최근 실행 로그
   POST /api/run-cycle      새 사이클 실행(예측+평가+발전)
+  POST /api/run-slot       특정 슬롯 즉시 실행 {"slot": 1|2|3, "date": "..."}
 """
 from __future__ import annotations
 
@@ -22,6 +24,7 @@ from urllib.parse import parse_qs, urlparse
 
 from ..config import SETTINGS
 from ..orchestrator import Orchestrator
+from ..scheduler import schedule_status
 from ..storage import Storage
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -130,6 +133,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"logs": store.recent_improver_logs(60)})
             elif path == "/api/cycles":
                 self._json({"cycles": store.cycle_dates()})
+            elif path == "/api/schedule":
+                self._json(schedule_status(store))
             else:
                 self._json({"error": "not found"}, 404)
         except Exception as exc:  # 견고성: 500 대신 메시지 반환
@@ -140,7 +145,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urlparse(self.path)
-        if parsed.path != "/api/run-cycle":
+        path = parsed.path
+        if path not in ("/api/run-cycle", "/api/run-slot"):
             self._json({"error": "not found"}, 404)
             return
         length = int(self.headers.get("Content-Length", 0) or 0)
@@ -152,9 +158,27 @@ class Handler(BaseHTTPRequestHandler):
         store = None
         try:
             store, orch = self._open()
-            cycle_date = payload.get("date") or self._next_date(store)
-            result = orch.run_full_cycle(cycle_date)
-            self._json({"ok": True, "result": result})
+            if path == "/api/run-cycle":
+                cycle_date = payload.get("date") or self._next_date(store)
+                result = orch.run_full_cycle(cycle_date)
+                self._json({"ok": True, "result": result})
+            else:  # /api/run-slot
+                slot = int(payload.get("slot", 0))
+                cycle_date = payload.get("date") or date.today().isoformat()
+                if slot == 1:
+                    result = orch.run_phase1_baseline(cycle_date)
+                elif slot == 2:
+                    r2 = orch.run_phase2_news(cycle_date)
+                    r3 = orch.run_phase3_revised(cycle_date)
+                    result = {"phase2": r2, "phase3": r3}
+                elif slot == 3:
+                    result = orch.run_phase4_evaluate(cycle_date)
+                else:
+                    self._json({"error": "slot must be 1, 2, or 3"}, 400)
+                    return
+                store.log_scheduler(cycle_date, slot, "manual", "수동 실행")
+                self._json({"ok": True, "slot": slot,
+                            "cycle_date": cycle_date, "result": result})
         except Exception as exc:
             self._json({"error": str(exc)}, 500)
         finally:

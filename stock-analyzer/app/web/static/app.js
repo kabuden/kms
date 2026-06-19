@@ -16,7 +16,7 @@ async function postJSON(url, body) {
 }
 
 async function refreshAll() {
-  await Promise.all([loadOverview(), loadLatest(), loadAgents(), loadLogs()]);
+  await Promise.all([loadOverview(), loadLatest(), loadAgents(), loadLogs(), loadSchedule()]);
 }
 
 async function loadOverview() {
@@ -159,6 +159,58 @@ async function loadLogs() {
     `<div class="log-row"><span class="who">${l.improver}</span>
      <span class="muted">[${l.cycle_date}] ${l.action}</span><br>${l.detail}</div>`
   ).join("") || `<p class="muted">로그가 없습니다.</p>`;
+}
+
+async function loadSchedule() {
+  const d = await getJSON("/api/schedule");
+  const today = $("#schedule-today");
+  today.textContent = d.is_trading_day
+    ? `(${d.today} · 거래일 · 현재 ${d.now_utc} UTC)`
+    : `(${d.today} · 비거래일)`;
+
+  const grid = $("#schedule-slots");
+  grid.innerHTML = (d.slots || []).map(s => {
+    let icon, cls, hint;
+    if (!d.is_trading_day) {
+      icon = "🔕"; cls = "slot-off"; hint = "비거래일";
+    } else if (s.done) {
+      icon = "✅"; cls = "slot-done"; hint = "완료";
+    } else if (s.past_due) {
+      icon = "⏳"; cls = "slot-running"; hint = "실행 중/대기";
+    } else {
+      icon = "🔜"; cls = "slot-pending"; hint = "예정";
+    }
+    return `<div class="slot-card ${cls}">
+      <div class="slot-time">${s.scheduled_utc} UTC</div>
+      <div class="slot-icon">${icon}</div>
+      <div class="slot-label">${s.label}</div>
+      <div class="slot-hint muted">${hint}</div>
+      <button class="slot-btn" onclick="runSlot(${s.slot})"
+        ${s.done ? "disabled" : ""}>즉시 실행</button>
+    </div>`;
+  }).join("");
+
+  const logBox = $("#schedule-log");
+  logBox.innerHTML = (d.recent_log || []).map(l => {
+    const icon = l.status === "ok" ? "✅" : l.status === "manual" ? "🖱️" : "❌";
+    return `<div class="log-row">
+      <span class="who">${icon} 슬롯 ${l.slot}</span>
+      <span class="muted">[${l.cycle_date}] ${l.ran_at ? l.ran_at.slice(0,16).replace('T',' ') + ' UTC' : ''}</span>
+      <br>${l.detail}</div>`;
+  }).join("") || `<p class="muted">아직 실행 기록이 없습니다.</p>`;
+}
+
+async function runSlot(slot) {
+  const statusEl = $("#run-status");
+  statusEl.textContent = `슬롯 ${slot} 실행 중…`;
+  const btns = document.querySelectorAll(".slot-btn");
+  btns.forEach(b => b.disabled = true);
+  try {
+    const r = await postJSON("/api/run-slot", { slot });
+    statusEl.textContent = r.ok ? `슬롯 ${slot} 완료` : `오류: ${r.error}`;
+  } finally {
+    await refreshAll();
+  }
 }
 
 async function runCycle(n) {

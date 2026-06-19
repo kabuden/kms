@@ -82,10 +82,33 @@ th { color: var(--muted); font-weight: 600; }
 .news-block ul { margin: 0; padding-left: 18px; font-size: 13px; }
 .news-block li { margin: 3px 0; }
 footer { padding: 24px; border-top: 1px solid var(--border); margin-top: 24px; }
+/* 스케줄 슬롯 카드 */
+.schedule-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 8px;
+}
+.slot-card {
+  background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+  padding: 14px 12px; text-align: center;
+}
+.slot-card.slot-done { border-color: var(--up); }
+.slot-card.slot-running { border-color: var(--flat); }
+.slot-card.slot-pending { opacity: 0.65; }
+.slot-card.slot-off { opacity: 0.4; }
+.slot-time { font-size: 20px; font-weight: 700; color: var(--accent); }
+.slot-icon { font-size: 24px; margin: 4px 0; }
+.slot-label { font-size: 13px; font-weight: 600; }
+.slot-hint { font-size: 12px; margin: 4px 0 8px; }
+.slot-btn {
+  background: var(--card); border: 1px solid var(--accent); color: var(--accent);
+  padding: 6px 12px; font-size: 12px; border-radius: 6px; cursor: pointer;
+}
+.slot-btn:hover:not(:disabled) { background: var(--accent); color: white; }
+.slot-btn:disabled { opacity: 0.4; cursor: default; }
 @media (max-width: 720px) {
   .grid { grid-template-columns: repeat(2, 1fr); }
   .two-col { grid-template-columns: 1fr; }
   .phases { grid-template-columns: repeat(2, 1fr); }
+  .schedule-grid { grid-template-columns: 1fr; }
   table { font-size: 12px; }
   th, td { padding: 6px 6px; }
 }
