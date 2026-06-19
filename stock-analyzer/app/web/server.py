@@ -22,10 +22,18 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from ..config import SETTINGS
+from ..config import (
+    ANALYSIS_POINTS,
+    FIRST_PREDICT_POINT,
+    HORIZONS,
+    OFFICIAL_PREDICT_POINT,
+    SETTINGS,
+)
 from ..orchestrator import Orchestrator
 from ..scheduler import schedule_status
 from ..storage import Storage
+
+PREDICT_POINTS = [p for p in ANALYSIS_POINTS if p.role == "predict"]
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 ENSEMBLE_KEY = "__ensemble__"
@@ -162,22 +170,15 @@ class Handler(BaseHTTPRequestHandler):
                 cycle_date = payload.get("date") or self._next_date(store)
                 result = orch.run_full_cycle(cycle_date)
                 self._json({"ok": True, "result": result})
-            else:  # /api/run-slot
-                slot = int(payload.get("slot", 0))
+            else:  # /api/run-slot  (분석 시점 1~4 즉시 실행)
+                point_id = int(payload.get("slot") or payload.get("point") or 0)
                 cycle_date = payload.get("date") or date.today().isoformat()
-                if slot == 1:
-                    result = orch.run_phase1_baseline(cycle_date)
-                elif slot == 2:
-                    r2 = orch.run_phase2_news(cycle_date)
-                    r3 = orch.run_phase3_revised(cycle_date)
-                    result = {"phase2": r2, "phase3": r3}
-                elif slot == 3:
-                    result = orch.run_phase4_evaluate(cycle_date)
-                else:
-                    self._json({"error": "slot must be 1, 2, or 3"}, 400)
+                if point_id not in (1, 2, 3, 4):
+                    self._json({"error": "point must be 1, 2, 3, or 4"}, 400)
                     return
-                store.log_scheduler(cycle_date, slot, "manual", "수동 실행")
-                self._json({"ok": True, "slot": slot,
+                result = orch.run_analysis_point(cycle_date, point_id)
+                store.log_scheduler(cycle_date, point_id, "manual", "수동 실행")
+                self._json({"ok": True, "point": point_id,
                             "cycle_date": cycle_date, "result": result})
         except Exception as exc:
             self._json({"error": str(exc)}, 500)
@@ -210,37 +211,85 @@ class Handler(BaseHTTPRequestHandler):
         return out
 
     def _cycle_detail(self, store: Storage, cycle_date: str) -> dict:
-        revised = store.ensemble_for_cycle(cycle_date, "revised")
-        baseline = {e["symbol"]: e for e in
-                    store.ensemble_for_cycle(cycle_date, "baseline")}
-        preds = store.predictions_for_cycle(cycle_date, "revised")
-        by_symbol: dict[str, list] = {}
-        for p in preds:
-            by_symbol.setdefault(p.symbol, []).append({
-                "predictor": p.predictor, "direction": p.direction,
-                "expected_return_pct": p.expected_return_pct,
-                "confidence": p.confidence, "rationale": p.rationale,
-            })
-        rows = []
         spec_by_symbol = {s.symbol: s for s in SETTINGS.universe}
-        for e in revised:
-            sym = e["symbol"]
+
+        # 시점별 앙상블 + 개별 예측 수집
+        point_ensembles: dict[str, dict[str, dict]] = {}   # key -> symbol -> ens
+        point_preds: dict[str, dict[str, list]] = {}       # key -> symbol -> preds
+        for pt in PREDICT_POINTS:
+            point_ensembles[pt.key] = {
+                e["symbol"]: e for e in store.ensemble_for_cycle(cycle_date, pt.key)}
+            pp: dict[str, list] = {}
+            for p in store.predictions_for_cycle(cycle_date, pt.key):
+                pp.setdefault(p.symbol, []).append({
+                    "predictor": p.predictor, "direction": p.direction,
+                    "expected_return_pct": p.expected_return_pct,
+                    "confidence": p.confidence, "rationale": p.rationale,
+                })
+            point_preds[pt.key] = pp
+
+        # 기간별 목표주가 (시점별로 묶기). 라벨은 설정에서 주입.
+        horizon_label = {h.key: h.label for h in HORIZONS}
+        horizons_by_symbol: dict[str, dict[int, list]] = {}
+        for h in store.horizons_for_cycle(cycle_date, "ensemble"):
+            h["label"] = horizon_label.get(h["horizon"], h["horizon"])
+            horizons_by_symbol.setdefault(h["symbol"], {}) \
+                .setdefault(h["analysis_point"], []).append(h)
+
+        # 정렬: HORIZONS 정의 순서대로
+        horizon_order = {h.key: i for i, h in enumerate(HORIZONS)}
+        for sym, by_pt in horizons_by_symbol.items():
+            for ap, lst in by_pt.items():
+                lst.sort(key=lambda x: horizon_order.get(x["horizon"], 99))
+
+        official_key = OFFICIAL_PREDICT_POINT
+        first_key = FIRST_PREDICT_POINT
+        official_id = next(p.id for p in PREDICT_POINTS if p.key == official_key)
+
+        rows = []
+        # 공식 시점에 예측된 종목 기준으로 행 구성
+        symbols = list(point_ensembles.get(official_key, {}).keys()) \
+            or list(spec_by_symbol.keys())
+        for sym in symbols:
             spec = spec_by_symbol.get(sym)
-            b = baseline.get(sym)
-            delta = round(e["expected_return_pct"] - b["expected_return_pct"], 3) \
-                if b else None
+            official = point_ensembles.get(official_key, {}).get(sym)
+            first = point_ensembles.get(first_key, {}).get(sym)
+            if not official:
+                continue
+            delta = round(official["expected_return_pct"]
+                          - first["expected_return_pct"], 3) if first else None
+            points = []
+            for pt in PREDICT_POINTS:
+                e = point_ensembles.get(pt.key, {}).get(sym)
+                if not e:
+                    continue
+                points.append({
+                    "point": pt.id, "key": pt.key, "label": pt.label,
+                    "note": pt.note,
+                    "direction": e["direction"],
+                    "expected_return_pct": e["expected_return_pct"],
+                    "confidence": e["confidence"],
+                    "base_price": e.get("base_price"),
+                    "predictors": point_preds.get(pt.key, {}).get(sym, []),
+                })
             rows.append({
                 "symbol": sym,
                 "name": spec.name if spec else sym,
                 "market": spec.market if spec else "",
-                "baseline": b,                    # 1차(기본) 예측
-                "ensemble": e,                    # 수정(뉴스반영) 예측 = 공식
-                "delta_pct": delta,               # 뉴스가 바꾼 기대수익률
-                "direction_changed": (b is not None and b["direction"] != e["direction"]),
+                "base_price": official.get("base_price"),
+                "first": first,                  # 한국개장전(최초) 예측
+                "ensemble": official,            # 미국개장후(공식) 예측
+                "delta_pct": delta,              # 최초 → 공식 기대수익률 변화
+                "direction_changed": (first is not None
+                                      and first["direction"] != official["direction"]),
                 "actual_return_pct": store.actual(cycle_date, sym),
-                "predictors": by_symbol.get(sym, []),
+                "points": points,                # 시점별 예측 변화
+                # 공식 시점 기준 기간별 목표주가(있으면)
+                "horizons": horizons_by_symbol.get(sym, {}).get(official_id, []),
             })
         return {"cycle_date": cycle_date, "rows": rows,
+                "points_meta": [{"id": p.id, "key": p.key, "label": p.label,
+                                 "note": p.note} for p in PREDICT_POINTS],
                 "news": self._news_digest(store, cycle_date)}
 
 

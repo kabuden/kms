@@ -2,6 +2,10 @@ const $ = (sel) => document.querySelector(sel);
 const dirClass = (d) => d === "up" ? "up" : d === "down" ? "down" : "flat";
 const dirLabel = (d) => d === "up" ? "▲ 상승" : d === "down" ? "▼ 하락" : "● 보합";
 const pct = (v) => v === null || v === undefined ? "–" : `${v > 0 ? "+" : ""}${v}%`;
+const price = (v) => {
+  if (v === null || v === undefined) return "–";
+  return v >= 1000 ? Math.round(v).toLocaleString() : v.toLocaleString();
+};
 
 async function getJSON(url) {
   const r = await fetch(url);
@@ -78,8 +82,8 @@ async function loadLatest() {
     return;
   }
   for (const row of d.rows) {
-    const e = row.ensemble;                 // 수정(뉴스반영) 예측
-    const b = row.baseline;                 // 1차 예측
+    const e = row.ensemble;                 // 공식(미국개장후) 예측
+    const b = row.first;                    // 최초(한국개장전) 예측
     const actual = row.actual_return_pct;
     const hit = actual === null || actual === undefined ? "–"
       : (actualDir(actual) === e.direction ? "✅" : "❌");
@@ -124,17 +128,54 @@ function renderDetail(rows) {
   const box = $("#detail");
   box.innerHTML = "";
   for (const row of rows) {
-    const preds = (row.predictors || []).map(p =>
-      `<tr><td>${p.predictor}</td>
-        <td class="${dirClass(p.direction)}">${dirLabel(p.direction)}</td>
-        <td>${pct(p.expected_return_pct)}</td>
-        <td>${Math.round(p.confidence*100)}%</td>
-        <td class="muted">${p.rationale || ""}</td></tr>`).join("");
-    box.insertAdjacentHTML("beforeend",
-      `<details class="detail-symbol">
-        <summary>${row.name} (${row.symbol}) — 앙상블 ${dirLabel(row.ensemble.direction)} ${pct(row.ensemble.expected_return_pct)}</summary>
+    // ① 시점별 예측 변화 (각 시점의 앙상블 + 5개 에이전트)
+    const pointBlocks = (row.points || []).map(pt => {
+      const preds = (pt.predictors || []).map(p =>
+        `<tr><td>${p.predictor}</td>
+          <td class="${dirClass(p.direction)}">${dirLabel(p.direction)}</td>
+          <td>${pct(p.expected_return_pct)}</td>
+          <td>${Math.round(p.confidence*100)}%</td>
+          <td class="muted">${p.rationale || ""}</td></tr>`).join("");
+      return `<div class="point-block">
+        <div class="point-head">
+          <b>${pt.label}</b>
+          <span class="${dirClass(pt.direction)}">${dirLabel(pt.direction)} ${pct(pt.expected_return_pct)}</span>
+          <span class="muted">신뢰 ${Math.round(pt.confidence*100)}% · 기준가 ${price(pt.base_price)} · ${pt.note}</span>
+        </div>
         <table><thead><tr><th>예측에이전트</th><th>방향</th><th>기대</th><th>신뢰</th><th>근거</th></tr></thead>
         <tbody>${preds}</tbody></table>
+      </div>`;
+    }).join("");
+
+    // ② 기간별 목표주가 (공식 시점 기준)
+    const hz = (row.horizons || []).map(h => {
+      const actualCell = h.actual_price === null || h.actual_price === undefined
+        ? '<span class="muted">대기</span>'
+        : `${price(h.actual_price)} ${h.hit === 1 ? "✅" : h.hit === 0 ? "❌" : ""}`;
+      return `<tr>
+        <td>${h.label}</td>
+        <td class="muted">${h.target_date}</td>
+        <td><b>${price(h.target_price)}</b></td>
+        <td class="${dirClass(h.direction)}">${dirLabel(h.direction)} ${pct(h.expected_return_pct)}</td>
+        <td>${Math.round(h.confidence*100)}%</td>
+        <td>${actualCell}</td>
+      </tr>`;
+    }).join("");
+    const hzTable = hz
+      ? `<div class="horizon-block">
+          <div class="point-head"><b>📅 기간별 목표주가</b>
+            <span class="muted">공식(미국개장후) 예측 기준 · 기준가 ${price(row.base_price)}</span></div>
+          <table><thead><tr><th>기간</th><th>목표일</th><th>목표주가</th><th>예상 변화</th><th>신뢰</th><th>실제</th></tr></thead>
+          <tbody>${hz}</tbody></table>
+        </div>`
+      : "";
+
+    box.insertAdjacentHTML("beforeend",
+      `<details class="detail-symbol">
+        <summary>${row.name} (${row.symbol}) — 공식 ${dirLabel(row.ensemble.direction)} ${pct(row.ensemble.expected_return_pct)}
+          · 다음종가 목표 ${price((row.horizons||[]).find(h=>h.horizon==="close")?.target_price)}</summary>
+        ${hzTable}
+        <div class="points-evolution">${pointBlocks}</div>
       </details>`);
   }
 }
@@ -165,11 +206,11 @@ async function loadSchedule() {
   const d = await getJSON("/api/schedule");
   const today = $("#schedule-today");
   today.textContent = d.is_trading_day
-    ? `(${d.today} · 거래일 · 현재 ${d.now_utc} UTC)`
+    ? `(${d.today} · 거래일 · 현재 ${d.now_kst} KST)`
     : `(${d.today} · 비거래일)`;
 
   const grid = $("#schedule-slots");
-  grid.innerHTML = (d.slots || []).map(s => {
+  grid.innerHTML = (d.points || []).map(s => {
     let icon, cls, hint;
     if (!d.is_trading_day) {
       icon = "🔕"; cls = "slot-off"; hint = "비거래일";
@@ -180,12 +221,13 @@ async function loadSchedule() {
     } else {
       icon = "🔜"; cls = "slot-pending"; hint = "예정";
     }
+    const roleTag = s.role === "evaluate" ? "평가·발전" : "예측";
     return `<div class="slot-card ${cls}">
-      <div class="slot-time">${s.scheduled_utc} UTC</div>
+      <div class="slot-time">${s.kst} KST</div>
       <div class="slot-icon">${icon}</div>
       <div class="slot-label">${s.label}</div>
-      <div class="slot-hint muted">${hint}</div>
-      <button class="slot-btn" onclick="runSlot(${s.slot})"
+      <div class="slot-hint muted">${roleTag} · ${hint}</div>
+      <button class="slot-btn" onclick="runSlot(${s.point})"
         ${s.done ? "disabled" : ""}>즉시 실행</button>
     </div>`;
   }).join("");
@@ -194,20 +236,20 @@ async function loadSchedule() {
   logBox.innerHTML = (d.recent_log || []).map(l => {
     const icon = l.status === "ok" ? "✅" : l.status === "manual" ? "🖱️" : "❌";
     return `<div class="log-row">
-      <span class="who">${icon} 슬롯 ${l.slot}</span>
+      <span class="who">${icon} 시점 ${l.slot}</span>
       <span class="muted">[${l.cycle_date}] ${l.ran_at ? l.ran_at.slice(0,16).replace('T',' ') + ' UTC' : ''}</span>
       <br>${l.detail}</div>`;
   }).join("") || `<p class="muted">아직 실행 기록이 없습니다.</p>`;
 }
 
-async function runSlot(slot) {
+async function runSlot(point) {
   const statusEl = $("#run-status");
-  statusEl.textContent = `슬롯 ${slot} 실행 중…`;
+  statusEl.textContent = `시점 ${point} 실행 중…`;
   const btns = document.querySelectorAll(".slot-btn");
   btns.forEach(b => b.disabled = true);
   try {
-    const r = await postJSON("/api/run-slot", { slot });
-    statusEl.textContent = r.ok ? `슬롯 ${slot} 완료` : `오류: ${r.error}`;
+    const r = await postJSON("/api/run-slot", { point });
+    statusEl.textContent = r.ok ? `시점 ${point} 완료` : `오류: ${r.error}`;
   } finally {
     await refreshAll();
   }

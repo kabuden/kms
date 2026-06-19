@@ -55,6 +55,16 @@ th { color: var(--muted); font-weight: 600; }
   padding: 12px; margin: 8px 0;
 }
 .detail-symbol summary { cursor: pointer; font-weight: 600; }
+.points-evolution { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 10px; }
+.point-block, .horizon-block {
+  background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 10px;
+}
+.horizon-block { margin-top: 10px; }
+.point-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline;
+  margin-bottom: 6px; font-size: 13px; }
+.point-head b { font-size: 13px; }
+@media (max-width: 720px) { .points-evolution { grid-template-columns: 1fr; } }
 .log-row {
   background: var(--card); border: 1px solid var(--border); border-radius: 8px;
   padding: 8px 12px; margin: 6px 0; font-size: 13px;

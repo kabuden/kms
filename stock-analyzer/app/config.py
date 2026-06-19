@@ -30,6 +30,62 @@ class TickerSpec:
     market: str          # "US" | "KR"
 
 
+# ── 하루 4분석 시점 (한국장 중심) ─────────────────────────────
+# 한 사이클(거래일 D)은 한국장 개장 전 분석에서 시작해 미국장 마감 후
+# 평가·발전으로 끝난다. 시각은 KST 기준이며 day_offset 은 D 로부터의 일수
+# (ap4 의 미국장 마감은 D+1 새벽 KST 라 1).
+# role: "predict" = 예측 시점, "evaluate" = 평가·발전 시점.
+KST_OFFSET_HOURS = 9
+
+
+@dataclass
+class AnalysisPoint:
+    id: int
+    key: str
+    label: str
+    kst_hour: int
+    kst_minute: int
+    day_offset: int      # 사이클 날짜 D 로부터 며칠 뒤(KST)
+    role: str            # "predict" | "evaluate"
+    news_scope: str      # "market" | "full"
+    note: str = ""
+
+
+ANALYSIS_POINTS: list[AnalysisPoint] = [
+    AnalysisPoint(1, "ap1_kr_preopen", "한국장 개장 전", 8, 0, 0,
+                  "predict", "market", "밤사이 미국장·해외 뉴스 반영"),
+    AnalysisPoint(2, "ap2_kr_close", "한국장 마감 후", 16, 0, 0,
+                  "predict", "full", "한국장 결과 + 종목 뉴스 반영"),
+    AnalysisPoint(3, "ap3_us_open", "미국장 개장 후", 23, 30, 0,
+                  "predict", "full", "미국장 개장 흐름 반영(공식 예측)"),
+    AnalysisPoint(4, "ap4_us_close", "미국장 마감 후 (평가·발전)", 6, 30, 1,
+                  "evaluate", "full", "실제 종가로 평가 + 발전 + 장기예측 정산"),
+]
+
+# 예측 시점(공식 비교용): 가장 이른 시점 vs 가장 늦은 시점
+FIRST_PREDICT_POINT = "ap1_kr_preopen"   # baseline 역할
+OFFICIAL_PREDICT_POINT = "ap3_us_open"   # 공식(revised) 예측
+
+
+@dataclass
+class Horizon:
+    key: str
+    label: str
+    kind: str            # "bday" | "week" | "month" | "year"
+    offset: int          # bday: 거래일수, month/year: 개월/년 수, week: 미사용
+
+
+# 각 분석 후 내놓는 기간별 목표주가
+HORIZONS: list[Horizon] = [
+    Horizon("close", "다음 거래일 종가", "bday", 1),
+    Horizon("week", "이번 주말", "week", 0),
+    Horizon("m1", "1개월 후", "month", 1),
+    Horizon("m3", "3개월 후", "month", 3),
+    Horizon("m6", "6개월 후", "month", 6),
+    Horizon("y1", "1년 후", "year", 1),
+]
+
+
 @dataclass
 class Settings:
     # 데이터 소스: 네트워크가 막혀 있으면 자동으로 합성 데이터로 폴백한다.

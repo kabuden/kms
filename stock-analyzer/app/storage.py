@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS predictions (
     cycle_date TEXT, symbol TEXT, predictor TEXT, direction TEXT,
     expected_return_pct REAL, confidence REAL, rationale TEXT,
     stage TEXT DEFAULT 'revised',
+    analysis_point INTEGER DEFAULT 0, base_price REAL,
     UNIQUE(cycle_date, symbol, predictor, stage)
 );
 CREATE TABLE IF NOT EXISTS ensemble_predictions (
@@ -47,7 +48,17 @@ CREATE TABLE IF NOT EXISTS ensemble_predictions (
     cycle_date TEXT, symbol TEXT, direction TEXT,
     expected_return_pct REAL, confidence REAL, weights TEXT, contributors TEXT,
     stage TEXT DEFAULT 'revised',
+    analysis_point INTEGER DEFAULT 0, base_price REAL,
     UNIQUE(cycle_date, symbol, stage)
+);
+CREATE TABLE IF NOT EXISTS horizon_targets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    cycle_date TEXT, analysis_point INTEGER, symbol TEXT, source TEXT,
+    horizon TEXT, base_price REAL, target_price REAL,
+    expected_return_pct REAL, direction TEXT, confidence REAL,
+    target_date TEXT, actual_price REAL, hit INTEGER, abs_error_pct REAL,
+    evaluated_at TEXT, created_at TEXT,
+    UNIQUE(cycle_date, analysis_point, symbol, source, horizon)
 );
 CREATE TABLE IF NOT EXISTS actuals (
     cycle_date TEXT, symbol TEXT, actual_return_pct REAL,
@@ -99,6 +110,12 @@ class Storage:
             if "stage" not in cols:
                 self.conn.execute(
                     f"ALTER TABLE {table} ADD COLUMN stage TEXT DEFAULT 'revised'")
+            if "analysis_point" not in cols:
+                self.conn.execute(
+                    f"ALTER TABLE {table} ADD COLUMN analysis_point INTEGER DEFAULT 0")
+            if "base_price" not in cols:
+                self.conn.execute(
+                    f"ALTER TABLE {table} ADD COLUMN base_price REAL")
         news_cols = {r["name"] for r in self.conn.execute(
             "PRAGMA table_info(news)").fetchall()}
         if "symbol" not in news_cols:
@@ -166,25 +183,83 @@ class Storage:
                             r["target_return_pct"]) for r in rows]
 
     # ---- 예측 ----
-    def save_prediction(self, p: Prediction, stage: str = "revised") -> None:
+    def save_prediction(self, p: Prediction, stage: str = "revised",
+                        analysis_point: int = 0,
+                        base_price: float | None = None) -> None:
         self.conn.execute(
             "INSERT OR REPLACE INTO predictions (cycle_date, symbol, predictor,"
-            " direction, expected_return_pct, confidence, rationale, stage)"
-            " VALUES (?,?,?,?,?,?,?,?)",
+            " direction, expected_return_pct, confidence, rationale, stage,"
+            " analysis_point, base_price)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?)",
             (p.cycle_date, p.symbol, p.predictor, p.direction,
-             p.expected_return_pct, p.confidence, p.rationale, stage),
+             p.expected_return_pct, p.confidence, p.rationale, stage,
+             analysis_point, base_price),
         )
         self.conn.commit()
 
-    def save_ensemble(self, e: EnsemblePrediction, stage: str = "revised") -> None:
+    def save_ensemble(self, e: EnsemblePrediction, stage: str = "revised",
+                      analysis_point: int = 0,
+                      base_price: float | None = None) -> None:
         self.conn.execute(
             "INSERT OR REPLACE INTO ensemble_predictions (cycle_date, symbol,"
             " direction, expected_return_pct, confidence, weights, contributors,"
-            " stage) VALUES (?,?,?,?,?,?,?,?)",
+            " stage, analysis_point, base_price) VALUES (?,?,?,?,?,?,?,?,?,?)",
             (e.cycle_date, e.symbol, e.direction, e.expected_return_pct,
-             e.confidence, json.dumps(e.weights), json.dumps(e.contributors), stage),
+             e.confidence, json.dumps(e.weights), json.dumps(e.contributors),
+             stage, analysis_point, base_price),
         )
         self.conn.commit()
+
+    # ---- 기간별 목표주가 (horizon targets) ----
+    def save_horizon_targets(self, cycle_date: str, analysis_point: int,
+                             symbol: str, source: str, rows: list[dict]) -> None:
+        now = _now()
+        self.conn.executemany(
+            "INSERT OR REPLACE INTO horizon_targets (cycle_date, analysis_point,"
+            " symbol, source, horizon, base_price, target_price,"
+            " expected_return_pct, direction, confidence, target_date,"
+            " actual_price, hit, abs_error_pct, evaluated_at, created_at)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            [(cycle_date, analysis_point, symbol, source, r["horizon"],
+              r["base_price"], r["target_price"], r["expected_return_pct"],
+              r["direction"], r["confidence"], r["target_date"],
+              None, None, None, None, now) for r in rows],
+        )
+        self.conn.commit()
+
+    def horizons_for_cycle(self, cycle_date: str,
+                           source: str = "ensemble") -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT * FROM horizon_targets WHERE cycle_date=? AND source=?"
+            " ORDER BY symbol, analysis_point", (cycle_date, source),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def pending_horizon_targets(self, today: str) -> list[dict]:
+        """만기가 도래(target_date<=today)했으나 아직 평가 안 된 항목."""
+        rows = self.conn.execute(
+            "SELECT * FROM horizon_targets WHERE target_date<=? AND"
+            " actual_price IS NULL", (today,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def update_horizon_actual(self, target_id: int, actual_price: float,
+                              hit: bool, abs_error_pct: float) -> None:
+        self.conn.execute(
+            "UPDATE horizon_targets SET actual_price=?, hit=?, abs_error_pct=?,"
+            " evaluated_at=? WHERE id=?",
+            (actual_price, int(hit), abs_error_pct, _now(), target_id),
+        )
+        self.conn.commit()
+
+    def horizon_accuracy(self) -> list[dict]:
+        """기간별 평가 누적 정확도(만기 도래분 기준)."""
+        rows = self.conn.execute(
+            "SELECT horizon, COUNT(*) AS total, SUM(hit) AS hits,"
+            " AVG(abs_error_pct) AS mae FROM horizon_targets"
+            " WHERE source='ensemble' AND actual_price IS NOT NULL"
+            " GROUP BY horizon", ).fetchall()
+        return [dict(r) for r in rows]
 
     def predictions_for_cycle(self, cycle_date: str,
                               stage: str = "revised") -> list[Prediction]:
@@ -204,6 +279,7 @@ class Storage:
         ).fetchall()
         out = []
         for r in rows:
+            keys = r.keys()
             out.append({
                 "cycle_date": r["cycle_date"], "symbol": r["symbol"],
                 "direction": r["direction"],
@@ -211,6 +287,8 @@ class Storage:
                 "confidence": r["confidence"],
                 "weights": json.loads(r["weights"] or "{}"),
                 "contributors": json.loads(r["contributors"] or "{}"),
+                "analysis_point": r["analysis_point"] if "analysis_point" in keys else 0,
+                "base_price": r["base_price"] if "base_price" in keys else None,
             })
         return out
 
@@ -375,24 +453,18 @@ class Storage:
         return [dict(r) for r in rows]
 
     # ---- 스케줄러 ----
-    def slot_done(self, cycle_date: str, slot: int) -> bool:
-        """스케줄 슬롯 완료 여부를 기존 데이터로 판단한다.
+    def slot_done(self, cycle_date: str, point_id: int) -> bool:
+        """분석 시점 완료 여부를 기존 데이터로 판단한다.
 
-        slot 1: 기본(baseline) 앙상블 예측 존재
-        slot 2: 수정(revised) 앙상블 예측 존재 (뉴스 수집 + 수정 예측 포함)
-        slot 3: 신뢰도 기록 존재 (평가·발전 완료)
+        시점 1~3(예측): 해당 analysis_point 의 앙상블 예측이 존재
+        시점 4(평가·발전): 신뢰도 기록이 존재
         """
-        if slot == 1:
+        if point_id in (1, 2, 3):
             return bool(self.conn.execute(
                 "SELECT 1 FROM ensemble_predictions"
-                " WHERE cycle_date=? AND stage='baseline' LIMIT 1",
-                (cycle_date,)).fetchone())
-        if slot == 2:
-            return bool(self.conn.execute(
-                "SELECT 1 FROM ensemble_predictions"
-                " WHERE cycle_date=? AND stage='revised' LIMIT 1",
-                (cycle_date,)).fetchone())
-        if slot == 3:
+                " WHERE cycle_date=? AND analysis_point=? LIMIT 1",
+                (cycle_date, point_id)).fetchone())
+        if point_id == 4:
             return bool(self.conn.execute(
                 "SELECT 1 FROM confidence WHERE cycle_date=? LIMIT 1",
                 (cycle_date,)).fetchone())

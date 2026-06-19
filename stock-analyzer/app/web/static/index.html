@@ -37,12 +37,12 @@
   </section>
 
   <section>
-    <h2>매일 4단계로 진행</h2>
+    <h2>한 사이클 = 한국장 중심 4분석 시점</h2>
     <ol class="phases">
-      <li><b>1차 예측</b><span>뉴스 제외, 기본 정보(시세·애널리스트)만</span></li>
-      <li><b>뉴스 수집·정리</b><span>미국·한국 경제뉴스 취합</span></li>
-      <li><b>수정 예측</b><span>뉴스 반영 → 1차 대비 변화(Δ)</span></li>
-      <li><b>장 마감 후</b><span>예측 vs 실제 비교 + 발전 학습</span></li>
+      <li><b>① 한국장 개장 전</b><span>밤사이 미국장·해외 뉴스로 1차 예측 (08:00 KST)</span></li>
+      <li><b>② 한국장 마감 후</b><span>한국장 결과 + 종목 뉴스로 재예측 (16:00 KST)</span></li>
+      <li><b>③ 미국장 개장 후</b><span>미국장 흐름 반영 공식 예측 (23:30 KST)</span></li>
+      <li><b>④ 미국장 마감 후</b><span>실제 종가 평가 + 발전 + 장기예측 정산 (익일 06:30 KST)</span></li>
     </ol>
   </section>
 
@@ -53,11 +53,12 @@
   </section>
 
   <section>
-    <h2>①③④ 예측: 1차 → 뉴스반영 수정 → 실제 <span class="muted" id="latest-date"></span></h2>
+    <h2>예측 변화: 개장전(최초) → 미국개장후(공식) → 실제 <span class="muted" id="latest-date"></span></h2>
+    <p class="muted">종목 행을 펼치면 ① ② ③ 시점별 예측과 5개 에이전트, 기간별 목표주가(다음 종가·주말·1·3·6개월·1년)를 볼 수 있습니다.</p>
     <table id="latest-table">
       <thead><tr>
-        <th>종목</th><th>시장</th><th>1차 예측</th><th>뉴스반영 수정</th>
-        <th>Δ 뉴스영향</th><th>신뢰도</th><th>실제</th><th>적중</th>
+        <th>종목</th><th>시장</th><th>① 개장 전</th><th>③ 공식(미국개장후)</th>
+        <th>Δ 변화</th><th>신뢰도</th><th>다음종가 실제</th><th>적중</th>
       </tr></thead>
       <tbody></tbody>
     </table>

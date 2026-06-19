@@ -91,6 +91,34 @@ def price_history(symbol: str, end_day: str, length: int = 30) -> list[float]:
     return _synthetic_series(symbol, end_day, length)
 
 
+def close_on(symbol: str, target_date: str) -> float | None:
+    """target_date(포함) 이하의 마지막 거래일 종가. 미래면 None.
+
+    기간별(장기) 예측을 만기 도래 시 실제 종가와 대조하는 데 쓴다.
+    실데이터에서 target_date 가 아직 미래라 데이터가 없으면 None 을 반환한다.
+    """
+    if not SETTINGS.offline:
+        series = _fetch_yahoo_series(symbol)
+        if not series:
+            return None
+        last_day = series[-1][0]
+        if target_date > last_day:
+            return None  # 아직 미래 → 평가 보류
+        chosen = None
+        for d, c in series:
+            if d <= target_date:
+                chosen = c
+            else:
+                break
+        return round(chosen, 2) if chosen is not None else None
+    # 오프라인 합성: target_date 의 결정론적 종가
+    today = datetime.utcnow().date().isoformat()
+    if target_date > today:
+        return None  # 미래는 평가 보류(합성도 동일 정책)
+    series = _synthetic_series(symbol, target_date, 2)
+    return series[-1] if series else None
+
+
 def realized_return_pct(symbol: str, cycle_date: str) -> float | None:
     """cycle_date 에 내린 예측의 실현 수익률(%) = 다음 거래일 종가 변화율.
 
