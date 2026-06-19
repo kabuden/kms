@@ -60,8 +60,32 @@ th { color: var(--muted); font-weight: 600; }
   padding: 8px 12px; margin: 6px 0; font-size: 13px;
 }
 .log-row .who { color: var(--accent); font-weight: 600; }
+.phases {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+  list-style: none; counter-reset: step; padding: 0; margin: 0;
+}
+.phases li {
+  background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+  padding: 12px; position: relative;
+}
+.phases li::before {
+  counter-increment: step; content: counter(step);
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 999px; background: var(--accent);
+  color: #fff; font-size: 12px; font-weight: 700; margin-bottom: 6px;
+}
+.phases li b { display: block; font-size: 14px; }
+.phases li span { color: var(--muted); font-size: 12px; }
+.news-block { background: var(--card); border: 1px solid var(--border);
+  border-radius: 10px; padding: 12px 14px; margin: 8px 0; }
+.news-block h3 { margin: 0 0 6px; font-size: 14px; }
+.news-block ul { margin: 0; padding-left: 18px; font-size: 13px; }
+.news-block li { margin: 3px 0; }
 footer { padding: 24px; border-top: 1px solid var(--border); margin-top: 24px; }
 @media (max-width: 720px) {
   .grid { grid-template-columns: repeat(2, 1fr); }
   .two-col { grid-template-columns: 1fr; }
+  .phases { grid-template-columns: repeat(2, 1fr); }
+  table { font-size: 12px; }
+  th, td { padding: 6px 6px; }
 }

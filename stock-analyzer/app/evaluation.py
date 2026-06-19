@@ -9,18 +9,20 @@ from .market_data import realized_return_pct
 from .models import Actual, Evaluation, to_direction
 from .storage import Storage
 
-ENSEMBLE_KEY = "__ensemble__"
+ENSEMBLE_KEY = "__ensemble__"           # 공식 기록: 수정(뉴스반영) 앙상블
+ENSEMBLE_BASELINE_KEY = "__ensemble_baseline__"  # 비교용: 1차(기본) 앙상블
 
 
 def evaluate_cycle(store: Storage, cycle_date: str) -> dict:
-    """cycle_date 예측들을 실제값과 대조해 평가를 적재한다."""
-    preds = store.predictions_for_cycle(cycle_date)
-    ensembles = store.ensemble_for_cycle(cycle_date)
-    symbols = {p.symbol for p in preds} | {e["symbol"] for e in ensembles}
+    """cycle_date 의 수정 예측을 실제값과 대조해 평가를 적재한다.
 
-    evaluated = 0
-    ensemble_hits = 0
-    ensemble_total = 0
+    - 개별 예측가/수정 앙상블: 공식 성과로 기록(발전 에이전트 학습에 사용)
+    - 1차(기본) 앙상블: 별도 키로 기록해 '뉴스 반영 효과'를 비교
+    """
+    preds = store.predictions_for_cycle(cycle_date, "revised")
+    revised = store.ensemble_for_cycle(cycle_date, "revised")
+    baseline = store.ensemble_for_cycle(cycle_date, "baseline")
+    symbols = {p.symbol for p in preds} | {e["symbol"] for e in revised}
 
     # 종목별 실제 수익률 확보
     actuals: dict[str, float] = {}
@@ -31,34 +33,40 @@ def evaluate_cycle(store: Storage, cycle_date: str) -> dict:
             store.save_actual(Actual(cycle_date, symbol, cached))
         actuals[symbol] = cached
 
-    # 개별 예측 평가
+    # 개별 예측가 평가(수정 예측 기준)
+    evaluated = 0
     for p in preds:
-        actual = actuals[p.symbol]
-        actual_dir = to_direction(actual)
-        hit = (p.direction == actual_dir)
+        actual_dir = to_direction(actuals[p.symbol])
         store.save_evaluation(Evaluation(
             cycle_date, p.symbol, p.predictor, p.direction, actual_dir,
-            hit, abs(p.expected_return_pct - actual),
+            p.direction == actual_dir, abs(p.expected_return_pct - actuals[p.symbol]),
         ))
         evaluated += 1
 
-    # 앙상블 평가
-    for e in ensembles:
-        actual = actuals[e["symbol"]]
-        actual_dir = to_direction(actual)
-        hit = (e["direction"] == actual_dir)
-        store.save_evaluation(Evaluation(
-            cycle_date, e["symbol"], ENSEMBLE_KEY, e["direction"], actual_dir,
-            hit, abs(e["expected_return_pct"] - actual),
-        ))
-        ensemble_total += 1
-        ensemble_hits += int(hit)
+    def _eval_ensemble(rows, key) -> int:
+        hits = 0
+        for e in rows:
+            actual_dir = to_direction(actuals[e["symbol"]])
+            hit = (e["direction"] == actual_dir)
+            store.save_evaluation(Evaluation(
+                cycle_date, e["symbol"], key, e["direction"], actual_dir,
+                hit, abs(e["expected_return_pct"] - actuals[e["symbol"]]),
+            ))
+            hits += int(hit)
+        return hits
+
+    ensemble_hits = _eval_ensemble(revised, ENSEMBLE_KEY)
+    baseline_hits = _eval_ensemble(baseline, ENSEMBLE_BASELINE_KEY)
+    total = len(revised)
 
     return {
         "cycle_date": cycle_date,
         "evaluated_predictions": evaluated,
         "ensemble_hits": ensemble_hits,
-        "ensemble_total": ensemble_total,
-        "ensemble_accuracy": round(ensemble_hits / ensemble_total, 3)
-        if ensemble_total else None,
+        "ensemble_total": total,
+        "ensemble_accuracy": round(ensemble_hits / total, 3) if total else None,
+        "baseline_hits": baseline_hits,
+        "baseline_accuracy": round(baseline_hits / len(baseline), 3)
+        if baseline else None,
+        "news_helped": (ensemble_hits - baseline_hits) if baseline else None,
     }

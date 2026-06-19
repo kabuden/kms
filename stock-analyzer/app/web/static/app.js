@@ -40,6 +40,18 @@ async function loadOverview() {
       || `사이클 ${o.cycles}/${o.min_cycles_for_trust}, 목표정확도 ${Math.round(o.min_accuracy_for_trust*100)}%`}`;
   }
 
+  // 뉴스 반영 효과: 수정 예측 정확도 vs 1차 예측 정확도
+  const nv = $("#news-value-note");
+  if (o.news_value !== null && o.news_value !== undefined) {
+    const sign = o.news_value > 0 ? "+" : "";
+    const verdict = o.news_value > 0 ? "뉴스가 적중도를 높임 👍"
+      : o.news_value < 0 ? "뉴스가 오히려 적중도를 낮춤 👎" : "뉴스 효과 중립";
+    nv.textContent = `뉴스 반영 효과: 1차 ${Math.round((o.baseline_accuracy||0)*100)}% → `
+      + `수정 ${Math.round((o.ensemble_accuracy||0)*100)}% (${sign}${Math.round(o.news_value*100)}%p) · ${verdict}`;
+  } else {
+    nv.textContent = "";
+  }
+
   const tb = $("#predictor-table tbody");
   tb.innerHTML = "";
   for (const p of o.predictors) {
@@ -49,29 +61,63 @@ async function loadOverview() {
   }
 }
 
+function actualDir(v) {
+  return v > 0.2 ? "up" : v < -0.2 ? "down" : "flat";
+}
+
 async function loadLatest() {
   const d = await getJSON("/api/latest");
   $("#latest-date").textContent = d.cycle_date ? `(${d.cycle_date})` : "";
+  $("#news-date").textContent = d.cycle_date ? `(${d.cycle_date})` : "";
+  renderNews(d.news);
   const tb = $("#latest-table tbody");
   tb.innerHTML = "";
   if (!d.rows || !d.rows.length) {
-    tb.innerHTML = `<tr><td colspan="7" class="muted">아직 예측이 없습니다. '새 사이클 실행'을 눌러주세요.</td></tr>`;
+    tb.innerHTML = `<tr><td colspan="8" class="muted">아직 예측이 없습니다. '오늘 하루 실행'을 눌러주세요.</td></tr>`;
     $("#detail").innerHTML = "";
     return;
   }
   for (const row of d.rows) {
-    const e = row.ensemble;
+    const e = row.ensemble;                 // 수정(뉴스반영) 예측
+    const b = row.baseline;                 // 1차 예측
     const actual = row.actual_return_pct;
     const hit = actual === null || actual === undefined ? "–"
-      : ((actual > 0.2 ? "up" : actual < -0.2 ? "down" : "flat") === e.direction ? "✅" : "❌");
+      : (actualDir(actual) === e.direction ? "✅" : "❌");
+    const baseCell = b
+      ? `<span class="${dirClass(b.direction)}">${dirLabel(b.direction)} ${pct(b.expected_return_pct)}</span>`
+      : "–";
+    const delta = row.delta_pct;
+    const deltaCell = delta === null || delta === undefined ? "–"
+      : `<span class="${delta > 0 ? "up" : delta < 0 ? "down" : "flat"}">${pct(delta)}</span>`
+        + (row.direction_changed ? ' <span class="pill">방향전환</span>' : "");
     tb.insertAdjacentHTML("beforeend",
       `<tr><td>${row.name}</td><td>${row.market}</td>
-       <td class="${dirClass(e.direction)}">${dirLabel(e.direction)}</td>
-       <td class="${dirClass(e.direction)}">${pct(e.expected_return_pct)}</td>
+       <td>${baseCell}</td>
+       <td class="${dirClass(e.direction)}"><b>${dirLabel(e.direction)} ${pct(e.expected_return_pct)}</b></td>
+       <td>${deltaCell}</td>
        <td>${Math.round(e.confidence * 100)}%</td>
        <td>${pct(actual)}</td><td>${hit}</td></tr>`);
   }
   renderDetail(d.rows);
+}
+
+function renderNews(news) {
+  const box = $("#news-digest");
+  if (!news || !Object.keys(news).length) {
+    box.innerHTML = `<p class="muted">수집된 뉴스가 없습니다.</p>`;
+    return;
+  }
+  const label = { US: "🇺🇸 미국", KR: "🇰🇷 한국" };
+  box.innerHTML = Object.entries(news).map(([market, d]) => {
+    const tone = d.avg_sentiment > 0.05 ? "up" : d.avg_sentiment < -0.05 ? "down" : "flat";
+    const heads = (d.headlines || []).map(h =>
+      `<li><span class="${h.sentiment > 0 ? "up" : h.sentiment < 0 ? "down" : "flat"}">●</span>
+       ${h.title} <span class="muted">(${h.source})</span></li>`).join("");
+    return `<div class="news-block">
+      <h3>${label[market] || market} · ${d.count}건 ·
+        평균감성 <span class="${tone}">${d.avg_sentiment > 0 ? "+" : ""}${d.avg_sentiment}</span></h3>
+      <ul>${heads}</ul></div>`;
+  }).join("");
 }
 
 function renderDetail(rows) {

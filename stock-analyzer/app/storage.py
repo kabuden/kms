@@ -35,13 +35,15 @@ CREATE TABLE IF NOT EXISTS predictions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     cycle_date TEXT, symbol TEXT, predictor TEXT, direction TEXT,
     expected_return_pct REAL, confidence REAL, rationale TEXT,
-    UNIQUE(cycle_date, symbol, predictor)
+    stage TEXT DEFAULT 'revised',
+    UNIQUE(cycle_date, symbol, predictor, stage)
 );
 CREATE TABLE IF NOT EXISTS ensemble_predictions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     cycle_date TEXT, symbol TEXT, direction TEXT,
     expected_return_pct REAL, confidence REAL, weights TEXT, contributors TEXT,
-    UNIQUE(cycle_date, symbol)
+    stage TEXT DEFAULT 'revised',
+    UNIQUE(cycle_date, symbol, stage)
 );
 CREATE TABLE IF NOT EXISTS actuals (
     cycle_date TEXT, symbol TEXT, actual_return_pct REAL,
@@ -82,7 +84,17 @@ class Storage:
         self.conn = sqlite3.connect(str(db_path))
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(SCHEMA)
+        self._migrate()
         self.conn.commit()
+
+    def _migrate(self) -> None:
+        """기존 DB에 새 컬럼이 없으면 추가(하위호환)."""
+        for table in ("predictions", "ensemble_predictions"):
+            cols = {r["name"] for r in self.conn.execute(
+                f"PRAGMA table_info({table})").fetchall()}
+            if "stage" not in cols:
+                self.conn.execute(
+                    f"ALTER TABLE {table} ADD COLUMN stage TEXT DEFAULT 'revised'")
 
     def close(self) -> None:
         self.conn.close()
@@ -114,6 +126,13 @@ class Storage:
         return [NewsItem(r["market"], r["source"], r["title"], r["summary"],
                          r["url"], r["published_at"], r["sentiment"]) for r in rows]
 
+    def news_for_cycle(self, cycle_date: str) -> list[NewsItem]:
+        rows = self.conn.execute(
+            "SELECT * FROM news WHERE cycle_date=?", (cycle_date,)
+        ).fetchall()
+        return [NewsItem(r["market"], r["source"], r["title"], r["summary"],
+                         r["url"], r["published_at"], r["sentiment"]) for r in rows]
+
     def analyst_views_for_symbol(self, cycle_date: str, symbol: str) -> list[AnalystView]:
         rows = self.conn.execute(
             "SELECT * FROM analyst_views WHERE cycle_date=? AND symbol=?",
@@ -123,37 +142,41 @@ class Storage:
                             r["target_return_pct"]) for r in rows]
 
     # ---- 예측 ----
-    def save_prediction(self, p: Prediction) -> None:
+    def save_prediction(self, p: Prediction, stage: str = "revised") -> None:
         self.conn.execute(
             "INSERT OR REPLACE INTO predictions (cycle_date, symbol, predictor,"
-            " direction, expected_return_pct, confidence, rationale)"
-            " VALUES (?,?,?,?,?,?,?)",
+            " direction, expected_return_pct, confidence, rationale, stage)"
+            " VALUES (?,?,?,?,?,?,?,?)",
             (p.cycle_date, p.symbol, p.predictor, p.direction,
-             p.expected_return_pct, p.confidence, p.rationale),
+             p.expected_return_pct, p.confidence, p.rationale, stage),
         )
         self.conn.commit()
 
-    def save_ensemble(self, e: EnsemblePrediction) -> None:
+    def save_ensemble(self, e: EnsemblePrediction, stage: str = "revised") -> None:
         self.conn.execute(
             "INSERT OR REPLACE INTO ensemble_predictions (cycle_date, symbol,"
-            " direction, expected_return_pct, confidence, weights, contributors)"
-            " VALUES (?,?,?,?,?,?,?)",
+            " direction, expected_return_pct, confidence, weights, contributors,"
+            " stage) VALUES (?,?,?,?,?,?,?,?)",
             (e.cycle_date, e.symbol, e.direction, e.expected_return_pct,
-             e.confidence, json.dumps(e.weights), json.dumps(e.contributors)),
+             e.confidence, json.dumps(e.weights), json.dumps(e.contributors), stage),
         )
         self.conn.commit()
 
-    def predictions_for_cycle(self, cycle_date: str) -> list[Prediction]:
+    def predictions_for_cycle(self, cycle_date: str,
+                              stage: str = "revised") -> list[Prediction]:
         rows = self.conn.execute(
-            "SELECT * FROM predictions WHERE cycle_date=?", (cycle_date,)
+            "SELECT * FROM predictions WHERE cycle_date=? AND stage=?",
+            (cycle_date, stage),
         ).fetchall()
         return [Prediction(r["cycle_date"], r["symbol"], r["predictor"],
                            r["direction"], r["expected_return_pct"],
                            r["confidence"], r["rationale"]) for r in rows]
 
-    def ensemble_for_cycle(self, cycle_date: str) -> list[dict]:
+    def ensemble_for_cycle(self, cycle_date: str,
+                           stage: str = "revised") -> list[dict]:
         rows = self.conn.execute(
-            "SELECT * FROM ensemble_predictions WHERE cycle_date=?", (cycle_date,)
+            "SELECT * FROM ensemble_predictions WHERE cycle_date=? AND stage=?",
+            (cycle_date, stage),
         ).fetchall()
         out = []
         for r in rows:
@@ -253,7 +276,7 @@ class Storage:
             "SELECT p.expected_return_pct AS pred, a.actual_return_pct AS act"
             " FROM predictions p JOIN actuals a"
             " ON p.cycle_date=a.cycle_date AND p.symbol=a.symbol"
-            " WHERE p.predictor=? AND p.cycle_date IN ("
+            " WHERE p.predictor=? AND p.stage='revised' AND p.cycle_date IN ("
             "   SELECT DISTINCT cycle_date FROM actuals ORDER BY cycle_date"
             "   DESC LIMIT ?)", (predictor, window),
         ).fetchall()

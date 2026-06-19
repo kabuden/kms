@@ -26,6 +26,7 @@ from ..storage import Storage
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 ENSEMBLE_KEY = "__ensemble__"
+ENSEMBLE_BASELINE_KEY = "__ensemble_baseline__"
 
 
 def _build_overview(store: Storage) -> dict:
@@ -39,6 +40,7 @@ def _build_overview(store: Storage) -> dict:
             "accuracy": round(hits / total, 3) if total else None,
         })
     e_hits, e_total = store.predictor_accuracy(ENSEMBLE_KEY)
+    b_hits, b_total = store.predictor_accuracy(ENSEMBLE_BASELINE_KEY)
     return {
         "offline": SETTINGS.offline,
         "use_llm": SETTINGS.use_llm,
@@ -47,6 +49,10 @@ def _build_overview(store: Storage) -> dict:
         "min_accuracy_for_trust": SETTINGS.min_accuracy_for_trust,
         "ensemble_accuracy": round(e_hits / e_total, 3) if e_total else None,
         "ensemble_samples": e_total,
+        # 뉴스 반영 효과: 수정 예측 정확도 vs 1차 예측 정확도
+        "baseline_accuracy": round(b_hits / b_total, 3) if b_total else None,
+        "news_value": round((e_hits / e_total) - (b_hits / b_total), 3)
+        if e_total and b_total else None,
         "confidence": conf,
         "predictors": roster_predictors,
     }
@@ -162,9 +168,28 @@ class Handler(BaseHTTPRequestHandler):
         last = datetime.fromisoformat(dates[-1]).date()
         return (last + timedelta(days=1)).isoformat()
 
+    def _news_digest(self, store: Storage, cycle_date: str) -> dict:
+        digest = {}
+        for item in store.news_for_cycle(cycle_date):
+            d = digest.setdefault(item.market, {"items": [], "sum": 0.0})
+            d["items"].append({"title": item.title, "sentiment": item.sentiment,
+                               "source": item.source})
+            d["sum"] += item.sentiment
+        out = {}
+        for market, d in digest.items():
+            n = len(d["items"])
+            out[market] = {
+                "count": n,
+                "avg_sentiment": round(d["sum"] / n, 3) if n else 0.0,
+                "headlines": d["items"][:6],
+            }
+        return out
+
     def _cycle_detail(self, store: Storage, cycle_date: str) -> dict:
-        ensembles = store.ensemble_for_cycle(cycle_date)
-        preds = store.predictions_for_cycle(cycle_date)
+        revised = store.ensemble_for_cycle(cycle_date, "revised")
+        baseline = {e["symbol"]: e for e in
+                    store.ensemble_for_cycle(cycle_date, "baseline")}
+        preds = store.predictions_for_cycle(cycle_date, "revised")
         by_symbol: dict[str, list] = {}
         for p in preds:
             by_symbol.setdefault(p.symbol, []).append({
@@ -174,18 +199,25 @@ class Handler(BaseHTTPRequestHandler):
             })
         rows = []
         spec_by_symbol = {s.symbol: s for s in SETTINGS.universe}
-        for e in ensembles:
+        for e in revised:
             sym = e["symbol"]
             spec = spec_by_symbol.get(sym)
+            b = baseline.get(sym)
+            delta = round(e["expected_return_pct"] - b["expected_return_pct"], 3) \
+                if b else None
             rows.append({
                 "symbol": sym,
                 "name": spec.name if spec else sym,
                 "market": spec.market if spec else "",
-                "ensemble": e,
+                "baseline": b,                    # 1차(기본) 예측
+                "ensemble": e,                    # 수정(뉴스반영) 예측 = 공식
+                "delta_pct": delta,               # 뉴스가 바꾼 기대수익률
+                "direction_changed": (b is not None and b["direction"] != e["direction"]),
                 "actual_return_pct": store.actual(cycle_date, sym),
                 "predictors": by_symbol.get(sym, []),
             })
-        return {"cycle_date": cycle_date, "rows": rows}
+        return {"cycle_date": cycle_date, "rows": rows,
+                "news": self._news_digest(store, cycle_date)}
 
 
 def _seed_if_empty(store: Storage) -> None:
