@@ -16,6 +16,8 @@
 """
 from __future__ import annotations
 
+from statistics import pstdev
+
 from .agents.collectors import KRMarketCollector, USMarketCollector
 from .agents.improvers import (
     ConfidenceCalibrator,
@@ -39,6 +41,21 @@ from .report import generate_and_store
 from .storage import Storage
 
 _POINT_BY_ID = {p.id: p for p in ANALYSIS_POINTS}
+
+# 방향이 ①(개장 전) 대비 ③(공식)에서 뒤집히면 신뢰도에 곱할 감점 계수.
+# 시점 간 예측이 흔들렸다는 뜻이라 사전 확신도를 낮춘다.
+_FLIP_PENALTY = 0.6
+
+
+def _volatility(history: list[float]) -> float | None:
+    """최근 일간 수익률(%)의 표준편차. 신호 강도 정규화 기준."""
+    if not history or len(history) < 3:
+        return None
+    rets = [(history[i] - history[i - 1]) / history[i - 1] * 100.0
+            for i in range(1, len(history)) if history[i - 1]]
+    if len(rets) < 2:
+        return None
+    return pstdev(rets)
 
 
 class Orchestrator:
@@ -106,6 +123,12 @@ class Orchestrator:
         news_saved = self._collect_for_point(cycle_date, point)
         weights = self.store.get_weights()
         params = self.store.get_predictor_params()
+        # ③ 공식 시점: ①(개장 전) 방향과 비교해 전환 여부로 신뢰도 감점
+        prior_dir: dict[str, str] = {}
+        if point.key == OFFICIAL_PREDICT_POINT:
+            prior_dir = {e["symbol"]: e["direction"] for e in
+                         self.store.ensemble_for_cycle(
+                             cycle_date, FIRST_PREDICT_POINT)}
         summary = []
         for spec in SETTINGS.universe:
             history = price_history(spec.symbol, cycle_date, length=30)
@@ -125,7 +148,12 @@ class Orchestrator:
                                            analysis_point=point.id,
                                            base_price=base_price)
                 preds.append(p)
-            ens = combine(cycle_date, spec.symbol, preds, weights)
+            ens = combine(cycle_date, spec.symbol, preds, weights,
+                          volatility=_volatility(history))
+            # 시점 간 방향 전환 → 사전 확신도 감점
+            pd = prior_dir.get(spec.symbol)
+            if pd and pd != ens.direction:
+                ens.confidence = round(ens.confidence * _FLIP_PENALTY, 3)
             self.store.save_ensemble(ens, stage=point.key,
                                      analysis_point=point.id,
                                      base_price=base_price)

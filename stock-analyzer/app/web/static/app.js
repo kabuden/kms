@@ -136,7 +136,7 @@ async function loadLatest() {
   const tb = $("#latest-table tbody");
   tb.innerHTML = "";
   if (!d.rows || !d.rows.length) {
-    tb.innerHTML = `<tr><td colspan="8" class="muted">아직 예측이 없습니다. 스케줄이 자동으로 실행됩니다.</td></tr>`;
+    tb.innerHTML = `<tr><td colspan="9" class="muted">아직 예측이 없습니다. 스케줄이 자동으로 실행됩니다.</td></tr>`;
     $("#detail").innerHTML = "";
     return;
   }
@@ -144,8 +144,8 @@ async function loadLatest() {
     const e = row.ensemble;
     const b = row.first;
     const actual = row.actual_return_pct;
-    const hit = actual === null || actual === undefined ? "–"
-      : (actualDir(actual) === e.direction ? "✅" : "❌");
+    const hasActual = actual !== null && actual !== undefined;
+    const hit = !hasActual ? "–" : (actualDir(actual) === e.direction ? "✅" : "❌");
     const baseCell = b
       ? `<span class="${dirClass(b.direction)}">${dirLabel(b.direction)} ${pct(b.expected_return_pct)}</span>`
       : "–";
@@ -153,6 +153,9 @@ async function loadLatest() {
     const deltaCell = delta === null || delta === undefined ? "–"
       : `<span class="${delta > 0 ? "up" : delta < 0 ? "down" : "flat"}">${pct(delta)}</span>`
         + (row.direction_changed ? ' <span class="pill">방향전환</span>' : "");
+    // 진짜 오차 = |공식 예측 − 실제| (실제값이 있을 때만)
+    const errCell = !hasActual ? '<span class="muted">대기</span>'
+      : `${Math.abs(e.expected_return_pct - actual).toFixed(2)}%p`;
     const ownedStar = row.owned ? ' <span class="owned-star" title="보유 종목">⭐</span>' : "";
     tb.insertAdjacentHTML("beforeend",
       `<tr><td>${row.name}${ownedStar}</td><td>${row.market}</td>
@@ -160,7 +163,7 @@ async function loadLatest() {
        <td class="${dirClass(e.direction)}"><b>${dirLabel(e.direction)} ${pct(e.expected_return_pct)}</b></td>
        <td>${deltaCell}</td>
        <td>${Math.round(e.confidence * 100)}%</td>
-       <td>${pct(actual)}</td><td>${hit}</td></tr>`);
+       <td>${pct(actual)}</td><td>${errCell}</td><td>${hit}</td></tr>`);
   }
   renderDetail(d.rows);
 }
