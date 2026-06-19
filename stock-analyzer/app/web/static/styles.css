@@ -1,0 +1,173 @@
+:root {
+  --bg: #0f1419; --card: #1a2129; --fg: #e6edf3; --muted: #8b98a5;
+  --up: #2ea043; --down: #f85149; --flat: #d29922; --accent: #388bfd;
+  --border: #2d333b;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; font-family: -apple-system, "Segoe UI", Roboto, "Noto Sans KR", sans-serif;
+  background: var(--bg); color: var(--fg); line-height: 1.5;
+}
+header { padding: 24px; border-bottom: 1px solid var(--border); }
+h1 { margin: 0; font-size: 24px; }
+.sub { margin: 4px 0 0; color: var(--muted); }
+section { padding: 16px 24px; }
+h2 { font-size: 16px; border-left: 3px solid var(--accent); padding-left: 8px; }
+.muted { color: var(--muted); font-weight: normal; font-size: 13px; }
+.banner {
+  margin: 16px 24px; padding: 14px 18px; border-radius: 10px;
+  background: var(--card); border: 1px solid var(--border); font-weight: 600;
+}
+.banner.ready { border-color: var(--up); color: var(--up); }
+.banner.learning { border-color: var(--flat); color: var(--flat); }
+.grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.card {
+  background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+  padding: 16px; text-align: center;
+}
+.metric { font-size: 28px; font-weight: 700; }
+.label { color: var(--muted); font-size: 13px; margin-top: 4px; }
+.actions { padding: 8px 24px; display: flex; gap: 10px; align-items: center; }
+button {
+  background: var(--accent); color: white; border: none; padding: 10px 16px;
+  border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600;
+}
+button:disabled { opacity: 0.5; cursor: wait; }
+#run-status { color: var(--muted); font-size: 13px; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+th { color: var(--muted); font-weight: 600; }
+.up { color: var(--up); } .down { color: var(--down); } .flat { color: var(--flat); }
+.owned-star { font-size: 12px; }
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.pill {
+  display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px;
+  background: var(--card); border: 1px solid var(--border); margin: 2px;
+}
+.agent-group { margin-bottom: 12px; }
+.agent-group h3 { font-size: 13px; color: var(--muted); margin: 6px 0; }
+.agent {
+  background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 12px; margin: 4px 0; font-size: 13px;
+}
+.agent b { color: var(--accent); }
+.detail-symbol {
+  background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+  padding: 12px; margin: 8px 0;
+}
+.detail-symbol summary { cursor: pointer; font-weight: 600; }
+.points-evolution { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 10px; }
+.point-block, .horizon-block {
+  background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 10px;
+}
+.horizon-block { margin-top: 10px; }
+.point-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline;
+  margin-bottom: 6px; font-size: 13px; }
+.point-head b { font-size: 13px; }
+@media (max-width: 720px) { .points-evolution { grid-template-columns: 1fr; } }
+.log-row {
+  background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 12px; margin: 6px 0; font-size: 13px;
+}
+.log-row .who { color: var(--accent); font-weight: 600; }
+.phases {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+  list-style: none; counter-reset: step; padding: 0; margin: 0;
+}
+.phases li {
+  background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+  padding: 12px; position: relative;
+}
+.phases li::before {
+  counter-increment: step; content: counter(step);
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 999px; background: var(--accent);
+  color: #fff; font-size: 12px; font-weight: 700; margin-bottom: 6px;
+}
+.phases li b { display: block; font-size: 14px; }
+.phases li span { color: var(--muted); font-size: 12px; }
+.news-block { background: var(--card); border: 1px solid var(--border);
+  border-radius: 10px; padding: 12px 14px; margin: 8px 0; }
+.news-block h3 { margin: 0 0 6px; font-size: 14px; }
+.news-block ul { margin: 0; padding-left: 18px; font-size: 13px; }
+.news-block li { margin: 3px 0; }
+/* 일일 리포트 */
+#report-select {
+  background: var(--card); color: var(--fg); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 10px; font-size: 14px;
+}
+.dl-link {
+  background: var(--card); border: 1px solid var(--accent); color: var(--accent);
+  padding: 8px 12px; border-radius: 8px; font-size: 13px; text-decoration: none;
+}
+.report-body {
+  background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+  padding: 6px 18px; margin-top: 10px; font-size: 14px;
+}
+.report-body h2 { border: none; padding: 0; font-size: 20px; margin: 14px 0 6px; }
+.report-body h3 { font-size: 15px; color: var(--accent); margin: 14px 0 4px; }
+.report-body h4 { font-size: 13px; color: var(--muted); margin: 8px 0 2px; }
+.report-body ul { margin: 4px 0; padding-left: 20px; }
+.report-body li { margin: 2px 0; }
+.report-body blockquote {
+  border-left: 3px solid var(--flat); margin: 8px 0; padding: 2px 12px;
+  color: var(--muted);
+}
+.report-body hr { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
+footer { padding: 24px; border-top: 1px solid var(--border); margin-top: 24px; }
+/* 신규 종목 발견 */
+.discovery-card {
+  background: var(--card); border: 1px solid var(--flat); border-radius: 10px;
+  padding: 10px 14px; margin: 6px 0;
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+}
+.dc-info { flex: 1; }
+.dc-name { font-weight: 600; font-size: 14px; }
+.dc-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.dc-btn {
+  background: transparent; border: 1px solid var(--border); color: var(--muted);
+  padding: 4px 10px; font-size: 12px; border-radius: 6px; cursor: pointer; white-space: nowrap;
+}
+.dc-btn:hover { border-color: var(--down); color: var(--down); }
+/* 투자 제안 */
+.portfolio-card {
+  background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+  padding: 10px 14px; margin: 6px 0;
+}
+.pc-header { display: flex; justify-content: space-between; align-items: center; }
+.pc-name { font-weight: 600; font-size: 14px; }
+.pc-weight { font-size: 22px; font-weight: 700; }
+.pc-detail { font-size: 13px; display: flex; gap: 14px; margin: 4px 0; }
+.alloc-bar-wrap { height: 6px; background: var(--border); border-radius: 3px; margin-top: 6px; }
+.alloc-bar { height: 6px; background: var(--up); border-radius: 3px; transition: width .4s; }
+/* 스케줄 슬롯 카드 */
+.schedule-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 8px;
+}
+.slot-card {
+  background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+  padding: 14px 12px; text-align: center;
+}
+.slot-card.slot-done { border-color: var(--up); }
+.slot-card.slot-running { border-color: var(--flat); }
+.slot-card.slot-pending { opacity: 0.65; }
+.slot-card.slot-off { opacity: 0.4; }
+.slot-time { font-size: 20px; font-weight: 700; color: var(--accent); }
+.slot-icon { font-size: 24px; margin: 4px 0; }
+.slot-label { font-size: 13px; font-weight: 600; }
+.slot-hint { font-size: 12px; margin: 4px 0 8px; }
+.slot-btn {
+  background: var(--card); border: 1px solid var(--accent); color: var(--accent);
+  padding: 6px 12px; font-size: 12px; border-radius: 6px; cursor: pointer;
+}
+.slot-btn:hover:not(:disabled) { background: var(--accent); color: white; }
+.slot-btn:disabled { opacity: 0.4; cursor: default; }
+@media (max-width: 720px) {
+  .grid { grid-template-columns: repeat(2, 1fr); }
+  .two-col { grid-template-columns: 1fr; }
+  .phases { grid-template-columns: repeat(2, 1fr); }
+  .schedule-grid { grid-template-columns: 1fr; }
+  table { font-size: 12px; }
+  th, td { padding: 6px 6px; }
+}
