@@ -24,6 +24,9 @@ CREATE TABLE IF NOT EXISTS scheduler_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     cycle_date TEXT, slot INTEGER, status TEXT, detail TEXT, ran_at TEXT
 );
+CREATE TABLE IF NOT EXISTS daily_reports (
+    cycle_date TEXT PRIMARY KEY, markdown TEXT, summary TEXT, created_at TEXT
+);
 CREATE TABLE IF NOT EXISTS news (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     cycle_date TEXT, market TEXT, source TEXT, title TEXT,
@@ -416,6 +419,49 @@ class Storage:
             "SELECT * FROM confidence ORDER BY cycle_date DESC LIMIT 1"
         ).fetchone()
         return dict(row) if row else None
+
+    def confidence_for_cycle(self, cycle_date: str) -> dict | None:
+        row = self.conn.execute(
+            "SELECT * FROM confidence WHERE cycle_date=?", (cycle_date,)
+        ).fetchone()
+        return dict(row) if row else None
+
+    # ---- 일일 리포트 ----
+    def save_report(self, cycle_date: str, markdown: str, summary: dict) -> None:
+        self.conn.execute(
+            "INSERT OR REPLACE INTO daily_reports (cycle_date, markdown, summary,"
+            " created_at) VALUES (?,?,?,?)",
+            (cycle_date, markdown, json.dumps(summary, ensure_ascii=False), _now()),
+        )
+        self.conn.commit()
+
+    def get_report(self, cycle_date: str) -> dict | None:
+        row = self.conn.execute(
+            "SELECT * FROM daily_reports WHERE cycle_date=?", (cycle_date,)
+        ).fetchone()
+        if not row:
+            return None
+        out = dict(row)
+        out["summary"] = json.loads(out["summary"] or "{}")
+        return out
+
+    def report_list(self) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT cycle_date, summary, created_at FROM daily_reports"
+            " ORDER BY cycle_date DESC"
+        ).fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            d["summary"] = json.loads(d["summary"] or "{}")
+            out.append(d)
+        return out
+
+    def improver_logs_for_cycle(self, cycle_date: str) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT * FROM improver_logs WHERE cycle_date=? ORDER BY id", (cycle_date,)
+        ).fetchall()
+        return [dict(r) for r in rows]
 
     # ---- 통계/리포트 ----
     def predictor_accuracy(self, predictor: str, window: int | None = None) -> tuple[int, int]:

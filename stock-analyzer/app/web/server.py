@@ -11,8 +11,10 @@ JSON API + 정적 파일을 함께 제공한다. FastAPI 등 외부 의존성이
   GET /api/predictors      예측 에이전트별 적중률
   GET /api/improver-logs   발전 에이전트 로그
   GET /api/schedule        오늘 스케줄 현황 + 최근 실행 로그
+  GET /api/reports         일일 리포트 목록(요약)
+  GET /api/report?date=... 특정/최신 일일 리포트(마크다운 본문)
   POST /api/run-cycle      새 사이클 실행(예측+평가+발전)
-  POST /api/run-slot       특정 슬롯 즉시 실행 {"slot": 1|2|3, "date": "..."}
+  POST /api/run-slot       특정 분석 시점 즉시 실행 {"point": 1~4, "date": "..."}
 """
 from __future__ import annotations
 
@@ -143,6 +145,18 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"cycles": store.cycle_dates()})
             elif path == "/api/schedule":
                 self._json(schedule_status(store))
+            elif path == "/api/reports":
+                self._json({"reports": store.report_list()})
+            elif path == "/api/report":
+                d = (qs.get("date") or [None])[0]
+                rep = store.get_report(d) if d else (
+                    store.report_list()[:1] or [None])[0]
+                if rep and not d:  # 최신 리포트 본문까지 채워서 반환
+                    rep = store.get_report(rep["cycle_date"])
+                if not rep:
+                    self._json({"error": "report not found"}, 404)
+                    return
+                self._json(rep)
             else:
                 self._json({"error": "not found"}, 404)
         except Exception as exc:  # 견고성: 500 대신 메시지 반환

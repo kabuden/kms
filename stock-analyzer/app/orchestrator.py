@@ -35,6 +35,7 @@ from .ensemble import combine
 from .evaluation import evaluate_cycle, evaluate_due_horizons
 from .horizons import project
 from .market_data import price_history
+from .report import generate_and_store
 from .storage import Storage
 
 _POINT_BY_ID = {p.id: p for p in ANALYSIS_POINTS}
@@ -126,8 +127,11 @@ class Orchestrator:
         conf = self.confidence_calibrator.run(self.store, cycle_date)
         # 만기 도래한 장기 기간 예측을 실제 종가로 정산(학습엔 미반영)
         horizon_eval = evaluate_due_horizons(self.store, cycle_date)
+        # 사이클 마감 리포트 생성·저장
+        report = generate_and_store(self.store, cycle_date)
         return {"evaluation": eval_result, "confidence": conf,
-                "horizon_settlement": horizon_eval}
+                "horizon_settlement": horizon_eval,
+                "report_summary": report["summary"]}
 
     # ---- 시점 디스패처 (스케줄러·웹에서 호출) ----
     def run_analysis_point(self, cycle_date: str, point_id: int) -> dict:
@@ -164,6 +168,7 @@ class Orchestrator:
             "evaluation": p4["evaluation"],
             "confidence": p4["confidence"],
             "horizon_settlement": p4["horizon_settlement"],
+            "report_summary": p4["report_summary"],
         }
 
     def agent_roster(self) -> dict:

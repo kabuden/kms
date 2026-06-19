@@ -20,8 +20,67 @@ async function postJSON(url, body) {
 }
 
 async function refreshAll() {
-  await Promise.all([loadOverview(), loadLatest(), loadAgents(), loadLogs(), loadSchedule()]);
+  await Promise.all([loadOverview(), loadLatest(), loadAgents(), loadLogs(),
+                     loadSchedule(), loadReports()]);
 }
+
+// ── 일일 리포트 ──
+function mdToHtml(md) {
+  const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const inline = (s) => esc(s)
+    .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
+    .replace(/_(.+?)_/g, "<i>$1</i>");
+  const out = [];
+  let inList = false;
+  const closeList = () => { if (inList) { out.push("</ul>"); inList = false; } };
+  for (const raw of md.split("\n")) {
+    const line = raw.trimEnd();
+    if (!line.trim()) { closeList(); continue; }
+    if (line.startsWith("### ")) { closeList(); out.push(`<h4>${inline(line.slice(4))}</h4>`); }
+    else if (line.startsWith("## ")) { closeList(); out.push(`<h3>${inline(line.slice(3))}</h3>`); }
+    else if (line.startsWith("# ")) { closeList(); out.push(`<h2>${inline(line.slice(2))}</h2>`); }
+    else if (line.startsWith("> ")) { closeList(); out.push(`<blockquote>${inline(line.slice(2))}</blockquote>`); }
+    else if (line.startsWith("---")) { closeList(); out.push("<hr>"); }
+    else if (line.startsWith("- ")) {
+      if (!inList) { out.push("<ul>"); inList = true; }
+      out.push(`<li>${inline(line.slice(2))}</li>`);
+    } else { closeList(); out.push(`<p>${inline(line)}</p>`); }
+  }
+  closeList();
+  return out.join("");
+}
+
+async function loadReports() {
+  const d = await getJSON("/api/reports");
+  const sel = $("#report-select");
+  const reports = d.reports || [];
+  if (!reports.length) {
+    sel.innerHTML = "";
+    $("#report-body").innerHTML = `<p class="muted">아직 작성된 리포트가 없습니다. 사이클 ④(평가)가 끝나면 생성됩니다.</p>`;
+    $("#report-download").style.display = "none";
+    return;
+  }
+  sel.innerHTML = reports.map(r => {
+    const s = r.summary || {};
+    const acc = s.next_close_total ? ` · 적중 ${s.next_close_hits}/${s.next_close_total}` : "";
+    return `<option value="${r.cycle_date}">${r.cycle_date} (${s.weekday || ""})${acc}</option>`;
+  }).join("");
+  await loadReport(reports[0].cycle_date);
+}
+
+async function loadReport(date) {
+  const r = await getJSON("/api/report?date=" + encodeURIComponent(date));
+  $("#report-date").textContent = `(${r.cycle_date})`;
+  $("#report-body").innerHTML = mdToHtml(r.markdown || "");
+  const dl = $("#report-download");
+  dl.href = "data:text/markdown;charset=utf-8," + encodeURIComponent(r.markdown || "");
+  dl.setAttribute("download", `report-${r.cycle_date}.md`);
+  dl.style.display = "inline-block";
+}
+
+document.addEventListener("change", (e) => {
+  if (e.target && e.target.id === "report-select") loadReport(e.target.value);
+});
 
 async function loadOverview() {
   const o = await getJSON("/api/overview");
