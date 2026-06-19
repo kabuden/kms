@@ -237,7 +237,8 @@ def _seed_if_empty(store: Storage) -> None:
     start = date.today() - timedelta(days=n)
     for i in range(n):
         orch.run_full_cycle((start + timedelta(days=i)).isoformat())
-    print(f"🌱 시드 완료: {n} 사이클(합성)")
+    mode = "실시세" if not SETTINGS.offline else "합성"
+    print(f"🌱 시드 완료: {n} 사이클({mode})")
 
 
 def serve(host: str = "0.0.0.0", port: int = 8000) -> None:

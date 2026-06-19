@@ -35,15 +35,18 @@ class Orchestrator:
         self.strategy_critic = StrategyCritic()
         self.confidence_calibrator = ConfidenceCalibrator()
 
-    def _predict_stage(self, cycle_date: str, stage: str,
-                       news_by_market: dict[str, list]) -> list[dict]:
-        """한 단계(기본/수정)의 종목별 예측+앙상블을 수행·저장한다."""
+    def _predict_stage(self, cycle_date: str, stage: str, news_provider) -> list[dict]:
+        """한 단계(기본/수정)의 종목별 예측+앙상블을 수행·저장한다.
+
+        news_provider(spec) -> list[NewsItem] 로 단계별 뉴스 입력을 주입한다
+        (baseline=뉴스없음, revised=시장+종목 뉴스).
+        """
         weights = self.store.get_weights()
         params = self.store.get_predictor_params()  # 발전 에이전트가 학습한 보정값
         summary = []
         for spec in SETTINGS.universe:
             history = price_history(spec.symbol, cycle_date, length=30)
-            news = news_by_market.get(spec.market, [])
+            news = news_provider(spec)
             views = self.store.analyst_views_for_symbol(cycle_date, spec.symbol)
             ctx = PredictorContext(cycle_date, spec.symbol, spec.market,
                                    history, news, views, params)
@@ -67,35 +70,40 @@ class Orchestrator:
         # 애널리스트 의견(기본 정보)은 확보하되, 뉴스는 비운 상태로 예측
         for c in self.collectors:
             self.store.save_analyst_views(cycle_date, c.collect_analyst_views(cycle_date))
-        empty_news = {c.market: [] for c in self.collectors}
-        summary = self._predict_stage(cycle_date, "baseline", empty_news)
+        summary = self._predict_stage(cycle_date, "baseline", lambda spec: [])
         return {"stage": "baseline", "ensemble": summary}
 
-    # ---- 2단계: 뉴스 수집·정리 ----
+    # ---- 2단계: 뉴스 수집·정리 (시장 전반 + 종목별) ----
     def run_phase2_news(self, cycle_date: str) -> dict:
-        news_by_market: dict[str, list] = {}
-        for c in self.collectors:
-            news = c.collect_news(cycle_date)
-            self.store.save_news(cycle_date, news)
-            news_by_market[c.market] = news
-        # 시장별 요약(건수/평균감성/주요 헤드라인)
         digest = {}
-        for market, items in news_by_market.items():
-            avg = round(sum(n.sentiment for n in items) / len(items), 3) if items else 0.0
-            digest[market] = {
-                "count": len(items),
-                "avg_sentiment": avg,
+        collector_by_market = {c.market: c for c in self.collectors}
+        for c in self.collectors:
+            market_news = c.collect_news(cycle_date)
+            self.store.save_news(cycle_date, market_news)
+            avg = round(sum(n.sentiment for n in market_news) / len(market_news), 3) \
+                if market_news else 0.0
+            digest[c.market] = {
+                "count": len(market_news), "avg_sentiment": avg,
                 "headlines": [{"title": n.title, "sentiment": n.sentiment,
-                               "source": n.source} for n in items[:6]],
+                               "source": n.source} for n in market_news[:6]],
             }
-        return {"stage": "news", "digest": digest}
+        # 종목별 뉴스
+        ticker_total = 0
+        for spec in SETTINGS.universe:
+            c = collector_by_market.get(spec.market)
+            if not c:
+                continue
+            tn = c.collect_ticker_news(cycle_date, spec)
+            if tn:
+                self.store.save_news(cycle_date, tn)
+                ticker_total += len(tn)
+        return {"stage": "news", "digest": digest, "ticker_news": ticker_total}
 
     # ---- 3단계: 수정 예측 (뉴스 반영, 1차 대비 Δ) ----
     def run_phase3_revised(self, cycle_date: str) -> dict:
-        news_by_market: dict[str, list] = {}
-        for c in self.collectors:
-            news_by_market[c.market] = self.store.news_for_market(cycle_date, c.market)
-        summary = self._predict_stage(cycle_date, "revised", news_by_market)
+        def provider(spec):
+            return self.store.news_for_symbol(cycle_date, spec.market, spec.symbol)
+        summary = self._predict_stage(cycle_date, "revised", provider)
 
         # 1차(baseline) 대비 변화량 계산
         base = {e["symbol"]: e for e in

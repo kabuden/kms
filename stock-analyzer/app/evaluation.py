@@ -24,18 +24,23 @@ def evaluate_cycle(store: Storage, cycle_date: str) -> dict:
     baseline = store.ensemble_for_cycle(cycle_date, "baseline")
     symbols = {p.symbol for p in preds} | {e["symbol"] for e in revised}
 
-    # 종목별 실제 수익률 확보
+    # 종목별 실제 수익률 확보. 실데이터에서 다음 거래일 종가가 아직 없으면
+    # (미래) None → 그 종목은 이번 평가에서 건너뛴다.
     actuals: dict[str, float] = {}
     for symbol in symbols:
         cached = store.actual(cycle_date, symbol)
         if cached is None:
             cached = realized_return_pct(symbol, cycle_date)
+            if cached is None:
+                continue
             store.save_actual(Actual(cycle_date, symbol, cached))
         actuals[symbol] = cached
 
     # 개별 예측가 평가(수정 예측 기준)
     evaluated = 0
     for p in preds:
+        if p.symbol not in actuals:
+            continue
         actual_dir = to_direction(actuals[p.symbol])
         store.save_evaluation(Evaluation(
             cycle_date, p.symbol, p.predictor, p.direction, actual_dir,
@@ -43,9 +48,11 @@ def evaluate_cycle(store: Storage, cycle_date: str) -> dict:
         ))
         evaluated += 1
 
-    def _eval_ensemble(rows, key) -> int:
-        hits = 0
+    def _eval_ensemble(rows, key) -> tuple[int, int]:
+        hits = count = 0
         for e in rows:
+            if e["symbol"] not in actuals:
+                continue
             actual_dir = to_direction(actuals[e["symbol"]])
             hit = (e["direction"] == actual_dir)
             store.save_evaluation(Evaluation(
@@ -53,11 +60,11 @@ def evaluate_cycle(store: Storage, cycle_date: str) -> dict:
                 hit, abs(e["expected_return_pct"] - actuals[e["symbol"]]),
             ))
             hits += int(hit)
-        return hits
+            count += 1
+        return hits, count
 
-    ensemble_hits = _eval_ensemble(revised, ENSEMBLE_KEY)
-    baseline_hits = _eval_ensemble(baseline, ENSEMBLE_BASELINE_KEY)
-    total = len(revised)
+    ensemble_hits, total = _eval_ensemble(revised, ENSEMBLE_KEY)
+    baseline_hits, base_total = _eval_ensemble(baseline, ENSEMBLE_BASELINE_KEY)
 
     return {
         "cycle_date": cycle_date,
@@ -66,7 +73,7 @@ def evaluate_cycle(store: Storage, cycle_date: str) -> dict:
         "ensemble_total": total,
         "ensemble_accuracy": round(ensemble_hits / total, 3) if total else None,
         "baseline_hits": baseline_hits,
-        "baseline_accuracy": round(baseline_hits / len(baseline), 3)
-        if baseline else None,
-        "news_helped": (ensemble_hits - baseline_hits) if baseline else None,
+        "baseline_accuracy": round(baseline_hits / base_total, 3)
+        if base_total else None,
+        "news_helped": (ensemble_hits - baseline_hits) if base_total else None,
     }

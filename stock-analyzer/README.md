@@ -64,13 +64,37 @@ python run.py serve --port 8000
 대시보드에서 **'새 사이클 실행'** / **'10 사이클 학습'** 버튼으로 직접 루프를
 돌리고, 종목별 5개 예측·앙상블·적중 여부·발전 로그·신뢰도 추이를 볼 수 있습니다.
 
-### 실데이터/LLM 켜기 (선택)
+### 실데이터 모드 (`SA_OFFLINE=false`) — API 키 불필요, 추가 설치 불필요
+실시세·실뉴스 모두 **파이썬 표준 라이브러리만으로** 받아옵니다(무료·무키).
+
 ```bash
-pip install -r requirements.txt
-cp .env.example .env   # 편집 후
-export SA_OFFLINE=false        # yfinance 시세 + RSS 뉴스
-export SA_USE_LLM=true
-export ANTHROPIC_API_KEY=sk-...
+export SA_OFFLINE=false        # 실시세 + 실뉴스
+python run.py serve
+```
+
+| 항목 | 소스 | 방식 |
+|---|---|---|
+| **시세** | Yahoo Finance 차트 JSON | urllib 직접 호출(pandas 불필요), 프로세스 내 캐시 |
+| **시장 뉴스** | Google News RSS(+CNBC·MarketWatch·한경·연합) | stdlib XML 파싱 |
+| **종목 뉴스** | Google News 종목 검색 RSS | 종목별 직접 관련 기사 |
+| **감성** | 사전(lexicon, 영문+국문) | 키 불필요 |
+
+> **뉴스의 한계**: RSS는 '현재' 뉴스만 제공합니다. 과거 날짜(시드/백테스트)는
+> 실제 시세로 평가하되 뉴스는 비웁니다. 뉴스 효과는 '오늘' 실시간 운영부터 반영됩니다.
+>
+> **애널리스트 의견**은 아직 시뮬레이션입니다(무료 실데이터 소스가 제한적).
+> 시세·뉴스가 실데이터 핵심이며, 애널리스트 컨센서스 실연동은 향후 과제입니다.
+
+### 종목 유니버스 (15)
+미국: S&P500·나스닥 지수 + Apple·Microsoft·NVIDIA·Amazon·Alphabet·Tesla /
+한국: 코스피 + 삼성전자·SK하이닉스·현대차·NAVER·카카오·LG에너지솔루션.
+`app/config.py` 의 `universe` 에서 언제든 추가/교체할 수 있습니다.
+
+### LLM 예측 에이전트(#5) 켜기 (선택)
+구독형 AI는 코드 호출이 안 되므로 기본 비활성입니다. 별도 API 키가 있으면:
+```bash
+pip install anthropic
+export SA_USE_LLM=true ANTHROPIC_API_KEY=sk-...
 ```
 
 ---

@@ -20,12 +20,12 @@ services:
     startCommand: "python run.py serve"
     healthCheckPath: /
     envVars:
-      - key: SA_OFFLINE          # true: 합성 데이터로 무키·무료 운영
-        value: "true"
+      - key: SA_OFFLINE          # false: 실시세(Yahoo)+실뉴스(RSS). 모두 stdlib·무키
+        value: "false"
       - key: SA_USE_LLM          # 구독형 AI는 코드 호출 불가 → false 유지
         value: "false"
-      - key: SA_SEED_CYCLES      # 콜드 스타트 시 채워 둘 합성 학습 사이클 수
-        value: "20"
+      - key: SA_SEED_CYCLES      # 콜드 스타트 시 실제 과거 시세로 채울 사이클 수
+        value: "20"              # (과거 뉴스는 RSS로 불가 → 가격 기반으로 시드)
       - key: SA_MIN_CYCLES
         value: "10"
       - key: SA_MIN_ACCURACY

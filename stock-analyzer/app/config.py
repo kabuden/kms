@@ -58,13 +58,23 @@ class Settings:
     )
 
     universe: list[TickerSpec] = field(default_factory=lambda: [
-        TickerSpec("SPY", "S&P 500 ETF", "US"),
+        # ── 미국 (지수 + 대형주) ──
+        TickerSpec("^GSPC", "S&P 500", "US"),
+        TickerSpec("^IXIC", "나스닥", "US"),
         TickerSpec("AAPL", "Apple", "US"),
-        TickerSpec("NVDA", "NVIDIA", "US"),
         TickerSpec("MSFT", "Microsoft", "US"),
-        TickerSpec("^KS11", "KOSPI", "KR"),
+        TickerSpec("NVDA", "NVIDIA", "US"),
+        TickerSpec("AMZN", "Amazon", "US"),
+        TickerSpec("GOOGL", "Alphabet", "US"),
+        TickerSpec("TSLA", "Tesla", "US"),
+        # ── 한국 (지수 + 대형주) ──
+        TickerSpec("^KS11", "코스피", "KR"),
         TickerSpec("005930.KS", "삼성전자", "KR"),
         TickerSpec("000660.KS", "SK하이닉스", "KR"),
+        TickerSpec("005380.KS", "현대차", "KR"),
+        TickerSpec("035420.KS", "NAVER", "KR"),
+        TickerSpec("035720.KS", "카카오", "KR"),
+        TickerSpec("373220.KS", "LG에너지솔루션", "KR"),
     ])
 
     def market_symbols(self, market: str) -> list[TickerSpec]:

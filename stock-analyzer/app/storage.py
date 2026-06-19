@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS news (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     cycle_date TEXT, market TEXT, source TEXT, title TEXT,
     summary TEXT, url TEXT, published_at TEXT, sentiment REAL,
-    collected_at TEXT
+    symbol TEXT DEFAULT '', collected_at TEXT
 );
 CREATE TABLE IF NOT EXISTS analyst_views (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -95,6 +95,10 @@ class Storage:
             if "stage" not in cols:
                 self.conn.execute(
                     f"ALTER TABLE {table} ADD COLUMN stage TEXT DEFAULT 'revised'")
+        news_cols = {r["name"] for r in self.conn.execute(
+            "PRAGMA table_info(news)").fetchall()}
+        if "symbol" not in news_cols:
+            self.conn.execute("ALTER TABLE news ADD COLUMN symbol TEXT DEFAULT ''")
 
     def close(self) -> None:
         self.conn.close()
@@ -103,9 +107,10 @@ class Storage:
     def save_news(self, cycle_date: str, items: list[NewsItem]) -> None:
         self.conn.executemany(
             "INSERT INTO news (cycle_date, market, source, title, summary, url,"
-            " published_at, sentiment, collected_at) VALUES (?,?,?,?,?,?,?,?,?)",
+            " published_at, sentiment, symbol, collected_at)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?)",
             [(cycle_date, n.market, n.source, n.title, n.summary, n.url,
-              n.published_at, n.sentiment, _now()) for n in items],
+              n.published_at, n.sentiment, n.symbol, _now()) for n in items],
         )
         self.conn.commit()
 
@@ -118,20 +123,35 @@ class Storage:
         )
         self.conn.commit()
 
+    @staticmethod
+    def _row_to_news(r) -> NewsItem:
+        return NewsItem(r["market"], r["source"], r["title"], r["summary"],
+                        r["url"], r["published_at"], r["sentiment"],
+                        r["symbol"] if "symbol" in r.keys() else "")
+
     def news_for_market(self, cycle_date: str, market: str) -> list[NewsItem]:
+        """시장 전반 뉴스(symbol='')만."""
         rows = self.conn.execute(
-            "SELECT * FROM news WHERE cycle_date=? AND market=?",
-            (cycle_date, market),
+            "SELECT * FROM news WHERE cycle_date=? AND market=? AND"
+            " (symbol IS NULL OR symbol='')", (cycle_date, market),
         ).fetchall()
-        return [NewsItem(r["market"], r["source"], r["title"], r["summary"],
-                         r["url"], r["published_at"], r["sentiment"]) for r in rows]
+        return [self._row_to_news(r) for r in rows]
+
+    def news_for_symbol(self, cycle_date: str, market: str,
+                        symbol: str) -> list[NewsItem]:
+        """해당 종목용 입력: 시장 전반 + 그 종목 직접 뉴스."""
+        rows = self.conn.execute(
+            "SELECT * FROM news WHERE cycle_date=? AND market=? AND"
+            " (symbol IS NULL OR symbol='' OR symbol=?)",
+            (cycle_date, market, symbol),
+        ).fetchall()
+        return [self._row_to_news(r) for r in rows]
 
     def news_for_cycle(self, cycle_date: str) -> list[NewsItem]:
         rows = self.conn.execute(
             "SELECT * FROM news WHERE cycle_date=?", (cycle_date,)
         ).fetchall()
-        return [NewsItem(r["market"], r["source"], r["title"], r["summary"],
-                         r["url"], r["published_at"], r["sentiment"]) for r in rows]
+        return [self._row_to_news(r) for r in rows]
 
     def analyst_views_for_symbol(self, cycle_date: str, symbol: str) -> list[AnalystView]:
         rows = self.conn.execute(

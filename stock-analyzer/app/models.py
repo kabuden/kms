@@ -14,6 +14,7 @@ class NewsItem:
     url: str
     published_at: str
     sentiment: float = 0.0   # -1.0(부정) ~ +1.0(긍정)
+    symbol: str = ""         # 종목별 뉴스면 심볼, 시장 전반이면 빈 문자열
 
 
 @dataclass
