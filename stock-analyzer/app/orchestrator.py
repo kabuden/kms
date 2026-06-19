@@ -50,6 +50,31 @@ class Orchestrator:
         self.strategy_critic = StrategyCritic()
         self.confidence_calibrator = ConfidenceCalibrator()
 
+    # ---- 신규 종목 발견 스캔 ----
+    def _scan_discoveries(self, cycle_date: str) -> None:
+        """뉴스 헤드라인에서 추적 유니버스 밖의 종목 언급을 감지해 저장."""
+        from .ticker_hints import KR_HINTS, US_HINTS
+        universe_symbols = {s.symbol for s in SETTINGS.universe}
+        all_hints: dict[str, tuple[str, str, list[str]]] = {}
+        for sym, (name, kws) in US_HINTS.items():
+            all_hints[sym] = (name, "US", kws)
+        for sym, (name, kws) in KR_HINTS.items():
+            all_hints[sym] = (name, "KR", kws)
+
+        news = self.store.news_for_cycle(cycle_date)
+        found: dict[str, int] = {}
+        for item in news:
+            text = (item.title + " " + (item.summary or "")).lower()
+            for sym, (name, market, kws) in all_hints.items():
+                if sym in universe_symbols:
+                    continue
+                if any(kw in text for kw in kws):
+                    found[sym] = found.get(sym, 0) + 1
+        for sym, count in found.items():
+            name, market, _ = all_hints[sym]
+            self.store.upsert_discovery(
+                sym, name, market, f"뉴스 {count}건 언급 (사이클 {cycle_date})")
+
     # ---- 뉴스/기본정보 수집 (시점별 정보량 차등) ----
     def _collect_for_point(self, cycle_date: str, point: AnalysisPoint) -> int:
         """시점에 맞는 뉴스를 수집·저장. 반환: 새로 저장한 뉴스 건수."""
@@ -115,6 +140,7 @@ class Orchestrator:
                 "expected_return_pct": ens.expected_return_pct,
                 "confidence": ens.confidence, "base_price": base_price,
             })
+        self._scan_discoveries(cycle_date)
         return {"point": point.id, "key": point.key, "label": point.label,
                 "news_saved": news_saved, "ensemble": summary}
 

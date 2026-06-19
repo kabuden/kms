@@ -28,6 +28,7 @@ class TickerSpec:
     symbol: str          # 데이터 조회용 심볼 (예: AAPL, 005930.KS)
     name: str            # 표시 이름
     market: str          # "US" | "KR"
+    sector: str = ""     # GICS 섹터 (한국어)
 
 
 # ── 하루 4분석 시점 (한국장 중심) ─────────────────────────────
@@ -114,23 +115,40 @@ class Settings:
     )
 
     universe: list[TickerSpec] = field(default_factory=lambda: [
-        # ── 미국 (지수 + 대형주) ──
-        TickerSpec("^GSPC", "S&P 500", "US"),
-        TickerSpec("^IXIC", "나스닥", "US"),
-        TickerSpec("AAPL", "Apple", "US"),
-        TickerSpec("MSFT", "Microsoft", "US"),
-        TickerSpec("NVDA", "NVIDIA", "US"),
-        TickerSpec("AMZN", "Amazon", "US"),
-        TickerSpec("GOOGL", "Alphabet", "US"),
-        TickerSpec("TSLA", "Tesla", "US"),
-        # ── 한국 (지수 + 대형주) ──
-        TickerSpec("^KS11", "코스피", "KR"),
-        TickerSpec("005930.KS", "삼성전자", "KR"),
-        TickerSpec("000660.KS", "SK하이닉스", "KR"),
-        TickerSpec("005380.KS", "현대차", "KR"),
-        TickerSpec("035420.KS", "NAVER", "KR"),
-        TickerSpec("035720.KS", "카카오", "KR"),
-        TickerSpec("373220.KS", "LG에너지솔루션", "KR"),
+        # ── 미국 (지수) ──
+        TickerSpec("^GSPC", "S&P 500", "US", "지수"),
+        TickerSpec("^IXIC", "나스닥", "US", "지수"),
+        # ── 미국 (정보기술) ──
+        TickerSpec("AAPL", "Apple", "US", "정보기술"),
+        TickerSpec("MSFT", "Microsoft", "US", "정보기술"),
+        TickerSpec("NVDA", "NVIDIA", "US", "정보기술·AI반도체"),
+        TickerSpec("AMZN", "Amazon", "US", "임의소비재·클라우드"),
+        TickerSpec("GOOGL", "Alphabet", "US", "커뮤니케이션"),
+        TickerSpec("TSLA", "Tesla", "US", "임의소비재·전기차"),
+        # ── 미국 (금융·헬스케어) ──
+        TickerSpec("JPM", "JP모건", "US", "금융"),
+        TickerSpec("LLY", "Eli Lilly", "US", "헬스케어"),
+        # ── 미국 (에너지·원자재) ──
+        TickerSpec("XOM", "ExxonMobil", "US", "에너지"),
+        TickerSpec("GLD", "SPDR 금 ETF", "US", "원자재·금"),
+        TickerSpec("FCX", "Freeport-McMoRan", "US", "원자재·구리"),
+        # ── 한국 (지수) ──
+        TickerSpec("^KS11", "코스피", "KR", "지수"),
+        # ── 한국 (정보기술·반도체) ──
+        TickerSpec("005930.KS", "삼성전자", "KR", "정보기술"),
+        TickerSpec("000660.KS", "SK하이닉스", "KR", "정보기술·반도체"),
+        # ── 한국 (임의소비재·자동차) ──
+        TickerSpec("005380.KS", "현대차", "KR", "임의소비재·자동차"),
+        # ── 한국 (커뮤니케이션·인터넷) ──
+        TickerSpec("035420.KS", "NAVER", "KR", "커뮤니케이션"),
+        TickerSpec("035720.KS", "카카오", "KR", "커뮤니케이션"),
+        # ── 한국 (소재·에너지) ──
+        TickerSpec("373220.KS", "LG에너지솔루션", "KR", "소재·배터리"),
+        TickerSpec("005490.KS", "POSCO홀딩스", "KR", "소재·철강"),
+        # ── 한국 (금융·헬스케어·엔터) ──
+        TickerSpec("105560.KS", "KB금융", "KR", "금융"),
+        TickerSpec("068270.KS", "셀트리온", "KR", "헬스케어·바이오"),
+        TickerSpec("352820.KS", "하이브", "KR", "엔터테인먼트"),
     ])
 
     def market_symbols(self, market: str) -> list[TickerSpec]:

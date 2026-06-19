@@ -161,6 +161,8 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/portfolio":
                 d = (qs.get("date") or [None])[0]
                 self._json(portfolio_suggest(store, d))
+            elif path == "/api/discoveries":
+                self._json({"discoveries": store.get_discoveries()})
             else:
                 self._json({"error": "not found"}, 404)
         except Exception as exc:  # 견고성: 500 대신 메시지 반환
@@ -172,7 +174,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         parsed = urlparse(self.path)
         path = parsed.path
-        if path not in ("/api/run-cycle", "/api/run-slot"):
+        if path not in ("/api/run-cycle", "/api/run-slot", "/api/discoveries/dismiss"):
             self._json({"error": "not found"}, 404)
             return
         length = int(self.headers.get("Content-Length", 0) or 0)
@@ -184,7 +186,14 @@ class Handler(BaseHTTPRequestHandler):
         store = None
         try:
             store, orch = self._open()
-            if path == "/api/run-cycle":
+            if path == "/api/discoveries/dismiss":
+                sym = payload.get("symbol", "")
+                if not sym:
+                    self._json({"error": "symbol required"}, 400)
+                    return
+                store.dismiss_discovery(sym)
+                self._json({"ok": True})
+            elif path == "/api/run-cycle":
                 cycle_date = payload.get("date") or self._next_date(store)
                 result = orch.run_full_cycle(cycle_date)
                 self._json({"ok": True, "result": result})

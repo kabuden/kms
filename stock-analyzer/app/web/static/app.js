@@ -21,7 +21,8 @@ async function postJSON(url, body) {
 
 async function refreshAll() {
   await Promise.all([loadOverview(), loadLatest(), loadAgents(), loadLogs(),
-                     loadSchedule(), loadReports(), loadPortfolio()]);
+                     loadSchedule(), loadReports(), loadPortfolio(),
+                     loadDiscoveries()]);
 }
 
 // ── 일일 리포트 ──
@@ -360,6 +361,43 @@ async function loadPortfolio() {
   $("#us-buy").innerHTML = renderBuy(d.us_buy);
   $("#kr-buy").innerHTML = renderBuy(d.kr_buy);
   $("#avoid-list").innerHTML = renderAvoid(d.avoid);
+}
+
+// ── 신규 종목 발견 ──
+async function loadDiscoveries() {
+  const d = await getJSON("/api/discoveries");
+  const list = d.discoveries || [];
+  const countEl = $("#discovery-count");
+  if (countEl) countEl.textContent = list.length ? `(${list.length}건)` : "(없음)";
+  const box = $("#discovery-list");
+  if (!box) return;
+  if (!list.length) {
+    box.innerHTML = `<p class="muted">뉴스에서 새로운 종목이 감지되면 여기에 표시됩니다.</p>`;
+    return;
+  }
+  const marketLabel = { US: "🇺🇸", KR: "🇰🇷" };
+  box.innerHTML = list.map(c => `
+    <div class="discovery-card" id="dc-${c.symbol.replace(/[^a-zA-Z0-9]/g,'_')}">
+      <div class="dc-info">
+        <div class="dc-name">${marketLabel[c.market] || ""} ${c.name} <span class="muted">(${c.symbol})</span></div>
+        <div class="dc-meta">뉴스 언급 ${c.mentions}회 · 마지막 ${(c.last_seen||"").slice(0,10)} · ${c.reason || ""}</div>
+      </div>
+      <button class="dc-btn" onclick="dismissDiscovery('${c.symbol}')">무시</button>
+    </div>`).join("");
+}
+
+async function dismissDiscovery(symbol) {
+  await postJSON("/api/discoveries/dismiss", { symbol });
+  const id = "dc-" + symbol.replace(/[^a-zA-Z0-9]/g, "_");
+  const el = document.getElementById(id);
+  if (el) el.remove();
+  const box = $("#discovery-list");
+  const remaining = box ? box.querySelectorAll(".discovery-card").length : 0;
+  if (box && !remaining) {
+    box.innerHTML = `<p class="muted">뉴스에서 새로운 종목이 감지되면 여기에 표시됩니다.</p>`;
+  }
+  const countEl = $("#discovery-count");
+  if (countEl) countEl.textContent = remaining ? `(${remaining}건)` : "(없음)";
 }
 
 refreshAll();

@@ -115,6 +115,20 @@ th { color: var(--muted); font-weight: 600; }
 }
 .report-body hr { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
 footer { padding: 24px; border-top: 1px solid var(--border); margin-top: 24px; }
+/* 신규 종목 발견 */
+.discovery-card {
+  background: var(--card); border: 1px solid var(--flat); border-radius: 10px;
+  padding: 10px 14px; margin: 6px 0;
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+}
+.dc-info { flex: 1; }
+.dc-name { font-weight: 600; font-size: 14px; }
+.dc-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.dc-btn {
+  background: transparent; border: 1px solid var(--border); color: var(--muted);
+  padding: 4px 10px; font-size: 12px; border-radius: 6px; cursor: pointer; white-space: nowrap;
+}
+.dc-btn:hover { border-color: var(--down); color: var(--down); }
 /* 투자 제안 */
 .portfolio-card {
   background: var(--card); border: 1px solid var(--border); border-radius: 10px;

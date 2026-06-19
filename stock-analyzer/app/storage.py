@@ -88,6 +88,11 @@ CREATE TABLE IF NOT EXISTS predictor_params (
     predictor TEXT PRIMARY KEY, scale REAL, sign REAL,
     flipped_at TEXT, updated_at TEXT
 );
+CREATE TABLE IF NOT EXISTS stock_discoveries (
+    symbol TEXT PRIMARY KEY, name TEXT, market TEXT,
+    mentions INTEGER DEFAULT 1, first_seen TEXT, last_seen TEXT,
+    dismissed INTEGER DEFAULT 0, reason TEXT
+);
 """
 
 
@@ -530,3 +535,41 @@ class Storage:
             "SELECT * FROM scheduler_log ORDER BY id DESC LIMIT ?", (limit,)
         ).fetchall()
         return [dict(r) for r in rows]
+
+    # ---- 신규 종목 발견 ----
+    def upsert_discovery(self, symbol: str, name: str, market: str,
+                         reason: str) -> None:
+        now = _now()
+        existing = self.conn.execute(
+            "SELECT mentions, dismissed FROM stock_discoveries WHERE symbol=?",
+            (symbol,),
+        ).fetchone()
+        if existing:
+            if existing["dismissed"]:
+                return  # 사용자가 무시한 종목은 재등록 안 함
+            self.conn.execute(
+                "UPDATE stock_discoveries SET mentions=mentions+1, last_seen=?,"
+                " reason=? WHERE symbol=?",
+                (now, reason, symbol),
+            )
+        else:
+            self.conn.execute(
+                "INSERT INTO stock_discoveries (symbol, name, market, mentions,"
+                " first_seen, last_seen, dismissed, reason)"
+                " VALUES (?,?,?,1,?,?,0,?)",
+                (symbol, name, market, now, now, reason),
+            )
+        self.conn.commit()
+
+    def get_discoveries(self, include_dismissed: bool = False) -> list[dict]:
+        sql = "SELECT * FROM stock_discoveries"
+        if not include_dismissed:
+            sql += " WHERE dismissed=0"
+        sql += " ORDER BY mentions DESC, last_seen DESC"
+        return [dict(r) for r in self.conn.execute(sql).fetchall()]
+
+    def dismiss_discovery(self, symbol: str) -> None:
+        self.conn.execute(
+            "UPDATE stock_discoveries SET dismissed=1 WHERE symbol=?", (symbol,)
+        )
+        self.conn.commit()
