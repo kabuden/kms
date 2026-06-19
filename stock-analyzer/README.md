@@ -139,6 +139,30 @@ export SA_USE_LLM=true ANTHROPIC_API_KEY=sk-...
 
 ---
 
+## 💾 GitHub 자동 백업 (리포트·모델 영구 보관)
+
+Render 무료 티어는 재배포 시 디스크가 초기화됩니다. 아래 환경변수를 설정하면
+사이클 ④ 완료마다 **리포트(.md)와 모델 가중치 스냅샷(.json)을 이 저장소에
+자동 커밋**하여 영구 보관합니다.
+
+```bash
+# Render > Environment 에서 설정
+SA_GITHUB_TOKEN=ghp_xxxxxxxxxxxx   # GitHub Personal Access Token (repo 쓰기 권한)
+SA_GITHUB_REPO=kabuden/kms         # 저장소 이름 (기본값)
+SA_GITHUB_BRANCH=main              # 브랜치 (기본값)
+SA_GITHUB_DIR=stock-analyzer/data/reports          # 리포트 경로 (기본값)
+SA_GITHUB_SNAPSHOT_DIR=stock-analyzer/data/snapshots  # 스냅샷 경로 (기본값)
+```
+
+GitHub PAT 발급: Settings → Developer settings → Personal access tokens → Fine-grained tokens
+→ `Contents: Read and Write` 권한만 선택하면 됩니다.
+
+> `SA_GITHUB_TOKEN` 이 없으면 GitHub 동기화는 자동으로 건너뜁니다.
+> 서버를 재배포해도 GitHub에 커밋된 리포트와 스냅샷은 보존되어 있고,
+> 예측 모델은 새 사이클부터 다시 학습을 시작합니다(보통 10사이클이면 충분히 수렴).
+
+---
+
 ## 📱 모바일에서 쓰기 (무료 배포)
 
 PC를 계속 켜둘 필요 없이, **무료 클라우드에 한 번만 배포**하면 휴대폰에서

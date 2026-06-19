@@ -228,14 +228,34 @@ def _dir(return_pct: float, band: float = 0.2) -> str:
 
 
 def generate_and_store(store: Storage, cycle_date: str) -> dict:
-    """리포트를 생성해 DB 저장 + 파일(reports/<date>.md)로 남긴다."""
+    """리포트를 생성해 DB 저장 + 로컬 파일 + GitHub에 남긴다."""
+    from .github_sync import push_model_state, push_report
+
     report = build_report(store, cycle_date)
     store.save_report(cycle_date, report["markdown"], report["summary"])
+
+    # 로컬 파일 저장 (실패해도 치명적이지 않음 — DB가 원본)
     try:
         reports_dir = SETTINGS.db_path.parent / "reports"
         reports_dir.mkdir(parents=True, exist_ok=True)
         (reports_dir / f"{cycle_date}.md").write_text(
             report["markdown"], encoding="utf-8")
     except Exception:
-        pass  # 파일 쓰기 실패는 치명적이지 않음(DB에 이미 저장됨)
+        pass
+
+    # GitHub 동기화 (SA_GITHUB_TOKEN 이 없으면 자동 스킵)
+    try:
+        push_report(cycle_date, report["markdown"])
+        conf = store.confidence_for_cycle(cycle_date) or {}
+        weights = store.get_weights()
+        push_model_state(cycle_date, {
+            "cycle_date": cycle_date,
+            "weights": weights,
+            "rolling_accuracy": conf.get("rolling_accuracy"),
+            "calibrated_confidence": conf.get("calibrated_confidence"),
+            "trade_ready": bool(conf.get("trade_ready")),
+        })
+    except Exception:
+        pass  # GitHub 동기화 실패는 치명적이지 않음
+
     return report
