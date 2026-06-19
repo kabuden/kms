@@ -64,6 +64,10 @@ CREATE TABLE IF NOT EXISTS confidence (
     cycle_date TEXT PRIMARY KEY, overall_accuracy REAL, rolling_accuracy REAL,
     calibrated_confidence REAL, trade_ready INTEGER, detail TEXT, created_at TEXT
 );
+CREATE TABLE IF NOT EXISTS predictor_params (
+    predictor TEXT PRIMARY KEY, scale REAL, sign REAL,
+    flipped_at TEXT, updated_at TEXT
+);
 """
 
 
@@ -199,6 +203,61 @@ class Storage:
             " VALUES (?,?,?)", (predictor, weight, _now()),
         )
         self.conn.commit()
+
+    # ---- 예측가 자가보정 파라미터 (발전 에이전트가 학습) ----
+    def get_predictor_params(self) -> dict[str, tuple[float, float]]:
+        """predictor -> (scale, sign). 예측 시 사용. 미설정 시 (1.0, 1.0) 기본."""
+        rows = self.conn.execute(
+            "SELECT predictor, scale, sign FROM predictor_params"
+        ).fetchall()
+        return {r["predictor"]: (r["scale"], r["sign"]) for r in rows}
+
+    def get_predictor_meta(self) -> dict[str, dict]:
+        """발전 에이전트용: scale·sign·flipped_at 전체."""
+        rows = self.conn.execute(
+            "SELECT predictor, scale, sign, flipped_at FROM predictor_params"
+        ).fetchall()
+        return {r["predictor"]: {"scale": r["scale"], "sign": r["sign"],
+                                 "flipped_at": r["flipped_at"]} for r in rows}
+
+    def set_predictor_param(self, predictor: str, scale: float, sign: float,
+                            flipped_at: str | None = None) -> None:
+        self.conn.execute(
+            "INSERT OR REPLACE INTO predictor_params (predictor, scale, sign,"
+            " flipped_at, updated_at) VALUES (?,?,?,?,?)",
+            (predictor, scale, sign, flipped_at, _now()),
+        )
+        self.conn.commit()
+
+    def predictor_accuracy_since(self, predictor: str,
+                                 since_cycle: str | None) -> tuple[int, int]:
+        """since_cycle 이후(미포함) 사이클의 (적중수, 전체수).
+
+        부호 반전 직후 '새 부호로 쌓인 증거'만 보고 재반전을 결정하기 위함.
+        since_cycle 이 None 이면 전체 이력 기준.
+        """
+        if since_cycle:
+            rows = self.conn.execute(
+                "SELECT hit FROM evaluations WHERE predictor=? AND cycle_date>?",
+                (predictor, since_cycle),
+            ).fetchall()
+        else:
+            rows = self.conn.execute(
+                "SELECT hit FROM evaluations WHERE predictor=?", (predictor,)
+            ).fetchall()
+        return sum(r["hit"] for r in rows), len(rows)
+
+    def recent_pred_actual(self, predictor: str, window: int) -> list[tuple[float, float]]:
+        """최근 window 사이클의 (예측수익률, 실제수익률) 쌍."""
+        rows = self.conn.execute(
+            "SELECT p.expected_return_pct AS pred, a.actual_return_pct AS act"
+            " FROM predictions p JOIN actuals a"
+            " ON p.cycle_date=a.cycle_date AND p.symbol=a.symbol"
+            " WHERE p.predictor=? AND p.cycle_date IN ("
+            "   SELECT DISTINCT cycle_date FROM actuals ORDER BY cycle_date"
+            "   DESC LIMIT ?)", (predictor, window),
+        ).fetchall()
+        return [(r["pred"], r["act"]) for r in rows]
 
     # ---- 발전 로그 ----
     def log_improver(self, cycle_date: str, improver: str, action: str, detail: str) -> None:

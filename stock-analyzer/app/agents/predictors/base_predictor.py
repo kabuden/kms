@@ -16,13 +16,16 @@ class PredictorContext:
 
     def __init__(self, cycle_date: str, symbol: str, market: str,
                  history: list[float], news: list[NewsItem],
-                 analyst_views: list[AnalystView]):
+                 analyst_views: list[AnalystView],
+                 params: dict[str, tuple[float, float]] | None = None):
         self.cycle_date = cycle_date
         self.symbol = symbol
         self.market = market
         self.history = history
         self.news = news
         self.analyst_views = analyst_views
+        # predictor 이름 -> (scale, sign): 발전 에이전트가 학습한 자가보정값
+        self.params = params or {}
 
 
 class BasePredictor(Agent):
@@ -34,10 +37,17 @@ class BasePredictor(Agent):
 
     def _mk(self, ctx: PredictorContext, expected_return_pct: float,
             confidence: float, rationale: str) -> Prediction:
+        # 발전 에이전트가 학습한 자가보정 적용: 크기(scale)·부호(sign)
+        scale, sign = ctx.params.get(self.name, (1.0, 1.0))
+        adjusted = expected_return_pct * scale * sign
+        if sign < 0:
+            rationale += " [자가보정: 신호반전]"
+        if abs(scale - 1.0) > 0.05:
+            rationale += f" [자가보정: ×{scale:.2f}]"
         confidence = max(0.0, min(1.0, confidence))
         return Prediction(
             cycle_date=ctx.cycle_date, symbol=ctx.symbol, predictor=self.name,
-            direction=to_direction(expected_return_pct),
-            expected_return_pct=round(expected_return_pct, 3),
+            direction=to_direction(adjusted),
+            expected_return_pct=round(adjusted, 3),
             confidence=round(confidence, 3), rationale=rationale,
         )

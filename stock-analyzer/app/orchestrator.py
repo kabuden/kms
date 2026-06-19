@@ -47,6 +47,7 @@ class Orchestrator:
             news_by_market[c.market] = news
 
         weights = self.store.get_weights()
+        params = self.store.get_predictor_params()  # 발전 에이전트가 학습한 보정값
         produced = 0
         ensemble_summary = []
 
@@ -56,7 +57,7 @@ class Orchestrator:
             news = news_by_market.get(spec.market, [])
             views = self.store.analyst_views_for_symbol(cycle_date, spec.symbol)
             ctx = PredictorContext(cycle_date, spec.symbol, spec.market,
-                                   history, news, views)
+                                   history, news, views, params)
             preds = []
             for predictor in self.predictors:
                 p = predictor.predict_one(ctx)
