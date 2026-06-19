@@ -115,6 +115,17 @@ th { color: var(--muted); font-weight: 600; }
 }
 .report-body hr { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
 footer { padding: 24px; border-top: 1px solid var(--border); margin-top: 24px; }
+/* 투자 제안 */
+.portfolio-card {
+  background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+  padding: 10px 14px; margin: 6px 0;
+}
+.pc-header { display: flex; justify-content: space-between; align-items: center; }
+.pc-name { font-weight: 600; font-size: 14px; }
+.pc-weight { font-size: 22px; font-weight: 700; }
+.pc-detail { font-size: 13px; display: flex; gap: 14px; margin: 4px 0; }
+.alloc-bar-wrap { height: 6px; background: var(--border); border-radius: 3px; margin-top: 6px; }
+.alloc-bar { height: 6px; background: var(--up); border-radius: 3px; transition: width .4s; }
 /* 스케줄 슬롯 카드 */
 .schedule-grid {
   display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 8px;

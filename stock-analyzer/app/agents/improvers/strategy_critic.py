@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from statistics import mean
 
-from ...config import SETTINGS
+from ...config import OFFICIAL_PREDICT_POINT, SETTINGS
 from ...storage import Storage
 from ..base import Agent
 
@@ -63,7 +63,7 @@ class StrategyCritic(Agent):
 
             # 2) 크기 보정 — 예측/실제 변동폭 비율로 게인 조정
             new_scale = cur_scale
-            pairs = store.recent_pred_actual(name, window)
+            pairs = store.recent_pred_actual(name, window, stage=OFFICIAL_PREDICT_POINT)
             if pairs:
                 mp = mean(abs(p) for p, _ in pairs)
                 ma = mean(abs(a) for _, a in pairs)

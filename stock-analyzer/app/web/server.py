@@ -32,6 +32,7 @@ from ..config import (
     SETTINGS,
 )
 from ..orchestrator import Orchestrator
+from ..portfolio import suggest as portfolio_suggest
 from ..scheduler import schedule_status
 from ..storage import Storage
 
@@ -157,6 +158,9 @@ class Handler(BaseHTTPRequestHandler):
                     self._json({"error": "report not found"}, 404)
                     return
                 self._json(rep)
+            elif path == "/api/portfolio":
+                d = (qs.get("date") or [None])[0]
+                self._json(portfolio_suggest(store, d))
             else:
                 self._json({"error": "not found"}, 404)
         except Exception as exc:  # 견고성: 500 대신 메시지 반환

@@ -375,15 +375,16 @@ class Storage:
             ).fetchall()
         return sum(r["hit"] for r in rows), len(rows)
 
-    def recent_pred_actual(self, predictor: str, window: int) -> list[tuple[float, float]]:
+    def recent_pred_actual(self, predictor: str, window: int,
+                           stage: str = "ap3_us_open") -> list[tuple[float, float]]:
         """최근 window 사이클의 (예측수익률, 실제수익률) 쌍."""
         rows = self.conn.execute(
             "SELECT p.expected_return_pct AS pred, a.actual_return_pct AS act"
             " FROM predictions p JOIN actuals a"
             " ON p.cycle_date=a.cycle_date AND p.symbol=a.symbol"
-            " WHERE p.predictor=? AND p.stage='revised' AND p.cycle_date IN ("
+            " WHERE p.predictor=? AND p.stage=? AND p.cycle_date IN ("
             "   SELECT DISTINCT cycle_date FROM actuals ORDER BY cycle_date"
-            "   DESC LIMIT ?)", (predictor, window),
+            "   DESC LIMIT ?)", (predictor, stage, window),
         ).fetchall()
         return [(r["pred"], r["act"]) for r in rows]
 

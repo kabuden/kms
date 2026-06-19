@@ -107,7 +107,7 @@ class Settings:
         default_factory=lambda: int(os.environ.get("SA_MIN_CYCLES", "10"))
     )
     min_accuracy_for_trust: float = field(
-        default_factory=lambda: float(os.environ.get("SA_MIN_ACCURACY", "0.58"))
+        default_factory=lambda: float(os.environ.get("SA_MIN_ACCURACY", "0.52"))
     )
     rolling_window: int = field(
         default_factory=lambda: int(os.environ.get("SA_ROLLING_WINDOW", "20"))

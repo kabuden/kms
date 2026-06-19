@@ -21,7 +21,7 @@ async function postJSON(url, body) {
 
 async function refreshAll() {
   await Promise.all([loadOverview(), loadLatest(), loadAgents(), loadLogs(),
-                     loadSchedule(), loadReports()]);
+                     loadSchedule(), loadReports(), loadPortfolio()]);
 }
 
 // ── 일일 리포트 ──
@@ -103,7 +103,6 @@ async function loadOverview() {
       || `사이클 ${o.cycles}/${o.min_cycles_for_trust}, 목표정확도 ${Math.round(o.min_accuracy_for_trust*100)}%`}`;
   }
 
-  // 뉴스 반영 효과: 수정 예측 정확도 vs 1차 예측 정확도
   const nv = $("#news-value-note");
   if (o.news_value !== null && o.news_value !== undefined) {
     const sign = o.news_value > 0 ? "+" : "";
@@ -136,13 +135,13 @@ async function loadLatest() {
   const tb = $("#latest-table tbody");
   tb.innerHTML = "";
   if (!d.rows || !d.rows.length) {
-    tb.innerHTML = `<tr><td colspan="8" class="muted">아직 예측이 없습니다. '오늘 하루 실행'을 눌러주세요.</td></tr>`;
+    tb.innerHTML = `<tr><td colspan="8" class="muted">아직 예측이 없습니다. 스케줄이 자동으로 실행됩니다.</td></tr>`;
     $("#detail").innerHTML = "";
     return;
   }
   for (const row of d.rows) {
-    const e = row.ensemble;                 // 공식(미국개장후) 예측
-    const b = row.first;                    // 최초(한국개장전) 예측
+    const e = row.ensemble;
+    const b = row.first;
     const actual = row.actual_return_pct;
     const hit = actual === null || actual === undefined ? "–"
       : (actualDir(actual) === e.direction ? "✅" : "❌");
@@ -187,7 +186,6 @@ function renderDetail(rows) {
   const box = $("#detail");
   box.innerHTML = "";
   for (const row of rows) {
-    // ① 시점별 예측 변화 (각 시점의 앙상블 + 5개 에이전트)
     const pointBlocks = (row.points || []).map(pt => {
       const preds = (pt.predictors || []).map(p =>
         `<tr><td>${p.predictor}</td>
@@ -206,7 +204,6 @@ function renderDetail(rows) {
       </div>`;
     }).join("");
 
-    // ② 기간별 목표주가 (공식 시점 기준)
     const hz = (row.horizons || []).map(h => {
       const actualCell = h.actual_price === null || h.actual_price === undefined
         ? '<span class="muted">대기</span>'
@@ -303,29 +300,66 @@ async function loadSchedule() {
 
 async function runSlot(point) {
   const statusEl = $("#run-status");
-  statusEl.textContent = `시점 ${point} 실행 중…`;
-  const btns = document.querySelectorAll(".slot-btn");
-  btns.forEach(b => b.disabled = true);
+  if (statusEl) statusEl.textContent = `시점 ${point} 실행 중…`;
+  document.querySelectorAll(".slot-btn").forEach(b => b.disabled = true);
   try {
     const r = await postJSON("/api/run-slot", { point });
-    statusEl.textContent = r.ok ? `시점 ${point} 완료` : `오류: ${r.error}`;
+    if (statusEl) statusEl.textContent = r.ok ? `시점 ${point} 완료` : `오류: ${r.error}`;
   } finally {
     await refreshAll();
   }
 }
 
-async function runCycle(n) {
-  const btn = $("#btn-run"), btn10 = $("#btn-run10");
-  btn.disabled = btn10.disabled = true;
-  for (let i = 0; i < n; i++) {
-    $("#run-status").textContent = `사이클 실행 중… (${i + 1}/${n})`;
-    await postJSON("/api/run-cycle", {});
+// ── 투자 제안 ──
+async function loadPortfolio() {
+  const d = await getJSON("/api/portfolio");
+  const statusEl = $("#portfolio-status");
+  const noteEl = $("#portfolio-note");
+
+  if (!d.ready) {
+    if (statusEl) statusEl.textContent = `(데이터 부족 — ${d.n_cycles}사이클)`;
+    if (noteEl) noteEl.textContent = d.note;
+    $("#us-buy").innerHTML = `<p class="muted">사이클이 쌓이면 자동으로 표시됩니다.</p>`;
+    $("#kr-buy").innerHTML = `<p class="muted">사이클이 쌓이면 자동으로 표시됩니다.</p>`;
+    $("#avoid-list").innerHTML = "";
+    return;
   }
-  $("#run-status").textContent = `완료: ${n} 사이클 실행됨`;
-  btn.disabled = btn10.disabled = false;
-  await refreshAll();
+
+  const readyBadge = d.trade_ready
+    ? `<span class="up">✅ 검증 완료</span>`
+    : `<span class="flat">🧪 학습 단계</span>`;
+  if (statusEl) statusEl.innerHTML = `${readyBadge} · ${d.cycle_date} · 정확도 ${Math.round(d.rolling_accuracy*100)}%`;
+  if (noteEl) noteEl.textContent = d.note;
+
+  const renderBuy = (list) => {
+    if (!list || !list.length) return `<p class="muted">매수 후보 없음 (신뢰도 45% 미달 또는 하락 예측)</p>`;
+    return list.map(c => {
+      const barW = Math.min(100, c.weight_pct / 30 * 100).toFixed(0);
+      return `<div class="portfolio-card">
+        <div class="pc-header">
+          <span class="pc-name">${c.name}</span>
+          <span class="pc-weight ${d.trade_ready ? "up" : "flat"}">${c.weight_pct}%</span>
+        </div>
+        <div class="pc-detail">
+          <span class="up">▲ ${pct(c.expected_return_pct)}</span>
+          <span class="muted">신뢰 ${Math.round(c.confidence*100)}%</span>
+          <span class="muted">기준가 ${price(c.base_price)}</span>
+        </div>
+        <div class="alloc-bar-wrap"><div class="alloc-bar" style="width:${barW}%"></div></div>
+      </div>`;
+    }).join("");
+  };
+
+  const renderAvoid = (list) => {
+    if (!list || !list.length) return `<p class="muted">회피 후보 없음</p>`;
+    return list.map(c =>
+      `<span class="pill down">${c.name} ▼ ${pct(c.expected_return_pct)} (신뢰 ${Math.round(c.confidence*100)}%)</span>`
+    ).join(" ");
+  };
+
+  $("#us-buy").innerHTML = renderBuy(d.us_buy);
+  $("#kr-buy").innerHTML = renderBuy(d.kr_buy);
+  $("#avoid-list").innerHTML = renderAvoid(d.avoid);
 }
 
-$("#btn-run").addEventListener("click", () => runCycle(1));
-$("#btn-run10").addEventListener("click", () => runCycle(10));
 refreshAll();
