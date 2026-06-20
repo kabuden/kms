@@ -368,6 +368,12 @@ def _restore_if_available() -> None:
 
 
 def serve(host: str = "0.0.0.0", port: int = 8000) -> None:
+    # 시작 시 GitHub 영구 보관 상태 진단(토큰/권한/브랜치) — 비밀은 노출하지 않음
+    try:
+        from ..github_sync import selftest
+        print("☁️  " + selftest())
+    except Exception as exc:
+        print(f"⚠️  github_sync 진단 실패: {exc}")
     # 콜드 스타트면 영구 백업에서 먼저 복원(없으면 빈 DB로 진행)
     _restore_if_available()
     # DB 스키마 초기화(연결은 요청마다 새로 연다)

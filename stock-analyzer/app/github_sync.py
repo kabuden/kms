@@ -220,6 +220,41 @@ def restore_db_snapshot(db_file) -> bool:
         return False
 
 
+def selftest() -> str:
+    """토큰·권한·브랜치 상태를 진단해 사람이 읽을 한 줄을 돌려준다(비밀 노출 없음).
+
+    시작 시 로그에 찍어, 영구 보관이 왜 동작/미동작하는지 즉시 알 수 있게 한다.
+    """
+    tok = _token()
+    if not tok:
+        return ("github_sync 진단: SA_GITHUB_TOKEN 미설정 → 영구 보관 비활성. "
+                "Render Environment 에 토큰을 추가하세요.")
+    prefix_ok = tok.startswith(("github_pat_", "ghp_", "gho_", "ghs_"))
+    head = tok[:11]
+    # 1) 인증 + 저장소 접근 확인
+    try:
+        with urllib.request.urlopen(
+                urllib.request.Request(f"{_API}/repos/{_repo()}",
+                                       headers=_headers()),
+                timeout=_TIMEOUT):
+            pass
+    except urllib.error.HTTPError as e:
+        hint = ("토큰 무효/만료 또는 권한 부족" if e.code in (401, 403)
+                else "저장소 접근 불가" if e.code == 404 else f"HTTP {e.code}")
+        warn = ("" if prefix_ok
+                else " (값이 'github_pat_'로 시작하지 않음 — prefix 누락 의심)")
+        return (f"github_sync 진단: 인증 실패 [{hint}] repo={_repo()} "
+                f"len={len(tok)} head='{head}…'{warn}")
+    except Exception as exc:
+        return f"github_sync 진단: 네트워크 오류 — {exc}"
+    # 2) 데이터 브랜치 보장(없으면 생성 시도)
+    branch_ok = _ensure_branch()
+    snap = "있음" if _get_sha(_db_path_in_repo()) else "없음"
+    return (f"github_sync 진단: ✅ 인증 OK repo={_repo()} "
+            f"data_branch={_branch()}({'준비됨' if branch_ok else '생성실패'}) "
+            f"기존 스냅샷={snap} len={len(tok)} head='{head}…'")
+
+
 def push_model_state(cycle_date: str, state: dict) -> bool:
     """가중치·정확도 스냅샷을 JSON으로 저장한다 (재시작 후 열람용).
 
