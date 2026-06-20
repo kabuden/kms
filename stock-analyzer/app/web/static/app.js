@@ -153,9 +153,18 @@ async function loadLatest() {
     const deltaCell = delta === null || delta === undefined ? "–"
       : `<span class="${delta > 0 ? "up" : delta < 0 ? "down" : "flat"}">${pct(delta)}</span>`
         + (row.direction_changed ? ' <span class="pill">방향전환</span>' : "");
-    // 진짜 오차 = |공식 예측 − 실제| (실제값이 있을 때만)
-    const errCell = !hasActual ? '<span class="muted">대기</span>'
-      : `${Math.abs(e.expected_return_pct - actual).toFixed(2)}%p`;
+    // 정확도 지수(상대오차 기반) + 절대오차 병기. 절대오차가 같아도
+    // 큰 변동을 맞힌 예측은 정확도가 더 높게 나온다.
+    let accCell;
+    if (!hasActual || row.accuracy_score === null || row.accuracy_score === undefined) {
+      accCell = '<span class="muted">대기</span>';
+    } else {
+      const accPct = Math.round(row.accuracy_score * 100);
+      const absErr = Math.abs(e.expected_return_pct - actual).toFixed(2);
+      const accCls = accPct >= 80 ? "up" : accPct >= 50 ? "flat" : "down";
+      accCell = `<span class="${accCls}"><b>${accPct}%</b></span> `
+        + `<span class="muted">(${absErr}%p)</span>`;
+    }
     const ownedStar = row.owned ? ' <span class="owned-star" title="보유 종목">⭐</span>' : "";
     tb.insertAdjacentHTML("beforeend",
       `<tr><td>${row.name}${ownedStar}</td><td>${row.market}</td>
@@ -163,7 +172,7 @@ async function loadLatest() {
        <td class="${dirClass(e.direction)}"><b>${dirLabel(e.direction)} ${pct(e.expected_return_pct)}</b></td>
        <td>${deltaCell}</td>
        <td>${Math.round(e.confidence * 100)}%</td>
-       <td>${pct(actual)}</td><td>${errCell}</td><td>${hit}</td></tr>`);
+       <td>${pct(actual)}</td><td>${accCell}</td><td>${hit}</td></tr>`);
   }
   renderDetail(d.rows);
 }

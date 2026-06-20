@@ -31,6 +31,7 @@ from ..config import (
     OFFICIAL_PREDICT_POINT,
     SETTINGS,
 )
+from ..evaluation import magnitude_accuracy
 from ..orchestrator import Orchestrator
 from ..portfolio import suggest as portfolio_suggest
 from ..scheduler import schedule_status
@@ -299,6 +300,7 @@ class Handler(BaseHTTPRequestHandler):
                     "base_price": e.get("base_price"),
                     "predictors": point_preds.get(pt.key, {}).get(sym, []),
                 })
+            actual_ret = store.actual(cycle_date, sym)
             rows.append({
                 "symbol": sym,
                 "name": spec.name if spec else sym,
@@ -311,7 +313,12 @@ class Handler(BaseHTTPRequestHandler):
                 "delta_pct": delta,              # 최초 → 공식 기대수익률 변화
                 "direction_changed": (first is not None
                                       and first["direction"] != official["direction"]),
-                "actual_return_pct": store.actual(cycle_date, sym),
+                "actual_return_pct": actual_ret,
+                # 크기 고려 정확도 지수: |예측−실제| 절대값이 같아도
+                # 큰 변동을 맞힌 예측을 더 높게 평가(상대오차 기반)
+                "accuracy_score": (
+                    magnitude_accuracy(official["expected_return_pct"], actual_ret)
+                    if actual_ret is not None else None),
                 "points": points,                # 시점별 예측 변화
                 # 공식 시점 기준 기간별 목표주가(있으면)
                 "horizons": horizons_by_symbol.get(sym, {}).get(official_id, []),

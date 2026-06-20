@@ -16,6 +16,24 @@ from .storage import Storage
 ENSEMBLE_KEY = "__ensemble__"           # 공식 기록: 공식(미국개장후) 앙상블
 ENSEMBLE_BASELINE_KEY = "__ensemble_baseline__"  # 비교용: 최초(한국개장전) 앙상블
 
+# 정확도 지수 분모 하한(%p). 실제 변동이 미세할 때 상대오차가 폭발하는 것을 막는다.
+_ACC_MIN_DENOM = 0.5
+
+
+def magnitude_accuracy(predicted_pct: float, actual_pct: float,
+                       min_denom: float = _ACC_MIN_DENOM) -> float:
+    """크기를 고려한 정확도 지수(0~1).
+
+    절대 오차가 같아도 예측·실제의 크기가 크면 더 정확한 것으로 본다.
+    예) 예측 +20%/실제 +19.9% → 0.995, 예측 +2%/실제 +1.9% → 0.95
+    (둘 다 절대오차 0.1%p지만 상대적으로 전자가 훨씬 정밀).
+    방향이 반대면 상대오차가 커져 자연히 0에 수렴한다.
+    """
+    denom = max(abs(actual_pct), abs(predicted_pct), min_denom)
+    rel_err = abs(predicted_pct - actual_pct) / denom
+    return round(max(0.0, 1.0 - rel_err), 3)
+
+
 
 def evaluate_cycle(store: Storage, cycle_date: str) -> dict:
     """cycle_date 의 공식 예측을 다음 거래일 종가와 대조해 평가를 적재한다.
