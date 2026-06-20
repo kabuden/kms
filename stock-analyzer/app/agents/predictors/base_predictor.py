@@ -18,7 +18,9 @@ class PredictorContext:
                  history: list[float], news: list[NewsItem],
                  analyst_views: list[AnalystView],
                  params: dict[str, tuple[float, float]] | None = None,
-                 event_signals: dict | None = None):
+                 event_signals: dict | None = None,
+                 fundamentals: dict | None = None,
+                 sector_signals: dict | None = None):
         self.cycle_date = cycle_date
         self.symbol = symbol
         self.market = market
@@ -29,6 +31,10 @@ class PredictorContext:
         self.params = params or {}
         # 이벤트 신호: 실적 발표 후 표류(PEAD) + 내부자 거래 패턴
         self.event_signals: dict = event_signals or {}
+        # 펀더멘털 스냅샷(PER·PBR·ROE 등): 밸류·퀄리티 팩터가 사용
+        self.fundamentals: dict = fundamentals or {}
+        # 섹터 동료의 실적 이벤트: 섹터 전이 에이전트가 사용
+        self.sector_signals: dict = sector_signals or {}
 
 
 class BasePredictor(Agent):

@@ -20,6 +20,7 @@ from statistics import pstdev
 
 from .agents.collectors import KRMarketCollector, USMarketCollector
 from .agents.collectors.event_collector import collect_events
+from .agents.collectors.fundamentals_collector import fetch_fundamentals
 from .agents.improvers import (
     ConfidenceCalibrator,
     StrategyCritic,
@@ -139,6 +140,59 @@ class Orchestrator:
             "recent_insider": insider_signal,
         }
 
+    # ---- 섹터 전이 신호 (사이클당 1회 집계 → 종목별 조회) ----
+    @staticmethod
+    def _sector_group(sector: str) -> str:
+        """세분 섹터를 최상위 그룹으로 정규화.
+
+        '정보기술·AI반도체'·'정보기술·반도체장비' → '정보기술' 로 묶어
+        NVDA 실적이 LRCX·SNDK 등 같은 IT 종목으로 전이되게 한다.
+        """
+        return (sector or "").split("·")[0].strip()
+
+    def _recent_sector_events(self, cycle_date: str) -> dict[str, list[dict]]:
+        """cycle_date 기준 최근 실적 이벤트를 섹터 그룹별로 묶는다.
+
+        반환: {sector_group: [event dict, …]}  (event dict 에 days_since 부착)
+        """
+        from datetime import date
+
+        rows = self.store.recent_earnings_window(cycle_date, days_back=5)
+        try:
+            cycle_dt = date.fromisoformat(cycle_date)
+        except ValueError:
+            return {}
+
+        grouped: dict[str, list[dict]] = {}
+        for ev in rows:
+            group = self._sector_group(ev.get("sector") or "")
+            if not group:
+                continue
+            try:
+                days_since = (cycle_dt - date.fromisoformat(ev["event_date"])).days
+            except (ValueError, TypeError, KeyError):
+                continue
+            if days_since < 0:
+                continue
+            ev = dict(ev)
+            ev["days_since"] = days_since
+            grouped.setdefault(group, []).append(ev)
+        return grouped
+
+    def _sector_signals_for(self, spec: TickerSpec,
+                            sector_events: dict[str, list[dict]],
+                            cycle_date: str) -> dict:
+        """spec 의 동료(같은 섹터 그룹, 자기 제외) 실적 이벤트만 추려 반환."""
+        group = self._sector_group(spec.sector)
+        peers = [
+            {"symbol": ev["symbol"], "event_type": ev["event_type"],
+             "surprise_pct": ev.get("surprise_pct") or 0.0,
+             "days_since": ev["days_since"]}
+            for ev in sector_events.get(group, [])
+            if ev["symbol"] != spec.symbol
+        ]
+        return {"peer_events": peers}
+
     # ---- 이벤트 수집 + CAR 계산 + 패턴 갱신 (Phase 4에서 호출) ----
     def _collect_and_compute_events(self, cycle_date: str) -> int:
         """각 종목의 실적·내부자 거래를 수집하고 CAR을 계산해 패턴 DB를 갱신.
@@ -188,6 +242,15 @@ class Orchestrator:
             insiders = events_data.get("insiders", [])
             if insiders:
                 self.store.save_insider_trades(insiders)
+
+            # 펀더멘털 스냅샷(밸류·퀄리티 팩터용) 갱신
+            if not SETTINGS.offline:
+                try:
+                    fund = fetch_fundamentals(spec.symbol)
+                    if fund:
+                        self.store.save_fundamentals(fund)
+                except Exception:
+                    pass
 
         # 패턴 집계
         if car_count > 0:
@@ -257,6 +320,8 @@ class Orchestrator:
             prior_dir = {e["symbol"]: e["direction"] for e in
                          self.store.ensemble_for_cycle(
                              cycle_date, FIRST_PREDICT_POINT)}
+        # 섹터 전이용: 사이클당 한 번만 섹터별 최근 실적 이벤트를 모은다
+        sector_events = self._recent_sector_events(cycle_date)
         summary = []
         for spec in SETTINGS.universe:
             history = price_history(spec.symbol, cycle_date, length=30)
@@ -268,9 +333,14 @@ class Orchestrator:
                     cycle_date, spec.market, spec.symbol)
             views = self.store.analyst_views_for_symbol(cycle_date, spec.symbol)
             event_signals = self._get_event_signals(cycle_date, spec)
+            fundamentals = self.store.fundamentals_for(spec.symbol) or {}
+            sector_signals = self._sector_signals_for(
+                spec, sector_events, cycle_date)
             ctx = PredictorContext(cycle_date, spec.symbol, spec.market,
                                    history, news, views, params,
-                                   event_signals=event_signals)
+                                   event_signals=event_signals,
+                                   fundamentals=fundamentals,
+                                   sector_signals=sector_signals)
             preds = []
             for predictor in self.predictors:
                 p = predictor.predict_one(ctx)

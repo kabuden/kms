@@ -155,6 +155,14 @@ CREATE TABLE IF NOT EXISTS event_patterns (
     updated_at TEXT,
     PRIMARY KEY (event_type, sector)
 );
+CREATE TABLE IF NOT EXISTS fundamentals (
+    symbol TEXT PRIMARY KEY,
+    as_of TEXT,
+    pe REAL, forward_pe REAL, pb REAL, ps REAL,
+    roe REAL, debt_to_equity REAL, profit_margin REAL,
+    current_ratio REAL, beta REAL, dividend_yield REAL,
+    source TEXT, updated_at TEXT
+);
 """
 
 
@@ -737,6 +745,56 @@ class Storage:
         rows = self.conn.execute(
             "SELECT * FROM earnings_events ORDER BY event_date DESC LIMIT ?",
             (limit,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def recent_earnings_window(self, ref_date: str,
+                               days_back: int = 5) -> list[dict]:
+        """ref_date 기준 과거 days_back 일 이내(ref_date 이하) 모든 실적 이벤트.
+
+        섹터 전이 신호용: 같은 섹터 동료의 최근 실적을 한 번에 가져온다.
+        """
+        from datetime import date, timedelta
+        try:
+            cutoff = (date.fromisoformat(ref_date) -
+                      timedelta(days=days_back)).isoformat()
+        except ValueError:
+            return []
+        rows = self.conn.execute(
+            "SELECT * FROM earnings_events WHERE event_date>=? AND event_date<=?"
+            " ORDER BY event_date DESC",
+            (cutoff, ref_date),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    # ---- 펀더멘털 (밸류·퀄리티 팩터용) ----
+
+    def save_fundamentals(self, f) -> None:
+        """재무 스냅샷 upsert (종목당 최신 1건)."""
+        if f is None:
+            return
+        self.conn.execute(
+            "INSERT OR REPLACE INTO fundamentals"
+            " (symbol, as_of, pe, forward_pe, pb, ps, roe, debt_to_equity,"
+            " profit_margin, current_ratio, beta, dividend_yield, source,"
+            " updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (f.symbol, f.as_of, f.pe, f.forward_pe, f.pb, f.ps, f.roe,
+             f.debt_to_equity, f.profit_margin, f.current_ratio, f.beta,
+             f.dividend_yield, f.source, _now()),
+        )
+        self.conn.commit()
+
+    def fundamentals_for(self, symbol: str) -> dict | None:
+        """종목의 최신 재무 스냅샷. 없으면 None."""
+        row = self.conn.execute(
+            "SELECT * FROM fundamentals WHERE symbol=?", (symbol,)
+        ).fetchone()
+        return dict(row) if row else None
+
+    def all_fundamentals(self) -> list[dict]:
+        """대시보드용 전체 재무 스냅샷."""
+        rows = self.conn.execute(
+            "SELECT * FROM fundamentals ORDER BY symbol"
         ).fetchall()
         return [dict(r) for r in rows]
 
