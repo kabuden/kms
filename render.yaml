@@ -44,6 +44,17 @@ services:
       # - key: SA_GITHUB_TOKEN     # ← Render 대시보드 Environment 에 직접 입력
       - key: SA_GITHUB_DATA_BRANCH  # 데이터 전용 브랜치(자동 생성, 배포와 분리)
         value: "sa-data"
+      # ── LLM 토론 하네스(강세·약세·심판 + 회고) — Groq 백엔드 ──
+      # 휴리스틱 앙상블 위에 LLM 토론을 얹어 예측을 교정한다. Groq(Llama)는
+      # 매우 저렴(월 $1~3 수준)해 구독형 AI보다 운영비가 낮다. 키는 비밀값이라
+      # 이 파일에 적지 말고 Render Environment 에 SA_GROQ_API_KEY 로 추가하세요.
+      - key: SA_USE_HARNESS      # true 로 켜고 SA_GROQ_API_KEY 를 넣으면 활성
+        value: "false"
+      # - key: SA_GROQ_API_KEY   # ← Render 대시보드 Environment 에 직접 입력
+      - key: SA_GROQ_MODEL       # Groq 모델 id
+        value: "llama-3.3-70b-versatile"
+      - key: SA_HARNESS_POINTS   # 토론 돌릴 시점(3=공식만 → 비용 1/3). "1,2,3" 가능
+        value: "3"
 
 # ── 대안: 유료 영구 디스크 ──────────────────────────────────
 # GitHub 스냅샷 대신 영구 디스크를 붙이고 SA_DB_DIR 로 경로를 지정해도 됩니다.

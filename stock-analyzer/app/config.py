@@ -21,6 +21,16 @@ def _flag(name: str, default: bool) -> bool:
     return val.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _int_set(name: str, default: str) -> set[int]:
+    """'1,2,3' 같은 환경변수를 정수 집합으로. 비면 빈 집합."""
+    raw = os.environ.get(name, default)
+    out: set[int] = set()
+    for tok in raw.replace(" ", "").split(","):
+        if tok.isdigit():
+            out.add(int(tok))
+    return out
+
+
 @dataclass
 class TickerSpec:
     """추적 대상 종목/지수 정의."""
@@ -99,6 +109,24 @@ class Settings:
     )
     llm_model: str = field(
         default_factory=lambda: os.environ.get("SA_LLM_MODEL", "claude-fable-5")
+    )
+    # ── LLM 토론 하네스(강세·약세·심판 + 회고) — Groq 백엔드 ──
+    # 비용 절감을 위해 Anthropic 대신 Groq(Llama)로 토론을 돌린다.
+    use_harness: bool = field(default_factory=lambda: _flag("SA_USE_HARNESS", False))
+    groq_api_key: str | None = field(
+        default_factory=lambda: os.environ.get("SA_GROQ_API_KEY")
+    )
+    groq_model: str = field(
+        default_factory=lambda: os.environ.get(
+            "SA_GROQ_MODEL", "llama-3.3-70b-versatile")
+    )
+    # 어느 예측 시점에서 토론을 돌릴지(기본 3=공식 시점만 → 비용 1/3).
+    harness_points: set[int] = field(
+        default_factory=lambda: _int_set("SA_HARNESS_POINTS", "3")
+    )
+    # 회고 루프가 한 사이클에 돌아볼 '가장 크게 빗나간' 종목 수 상한.
+    harness_reflect_top_n: int = field(
+        default_factory=lambda: int(os.environ.get("SA_HARNESS_REFLECT_TOP_N", "5"))
     )
     # 기본은 ./data, 영구 디스크를 붙였다면 SA_DB_DIR 로 그 경로를 지정한다.
     db_path: Path = field(default_factory=lambda: Path(

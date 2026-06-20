@@ -93,6 +93,17 @@ CREATE TABLE IF NOT EXISTS stock_discoveries (
     mentions INTEGER DEFAULT 1, first_seen TEXT, last_seen TEXT,
     dismissed INTEGER DEFAULT 0, reason TEXT
 );
+CREATE TABLE IF NOT EXISTS harness_debates (
+    cycle_date TEXT, analysis_point INTEGER, symbol TEXT,
+    draft_return_pct REAL, draft_confidence REAL,
+    final_return_pct REAL, final_confidence REAL, final_direction TEXT,
+    bull_case TEXT, bear_case TEXT, verdict TEXT, created_at TEXT,
+    PRIMARY KEY (cycle_date, analysis_point, symbol)
+);
+CREATE TABLE IF NOT EXISTS harness_lessons (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    cycle_date TEXT, symbol TEXT, lesson TEXT, abs_error REAL, created_at TEXT
+);
 """
 
 
@@ -573,3 +584,50 @@ class Storage:
             "UPDATE stock_discoveries SET dismissed=1 WHERE symbol=?", (symbol,)
         )
         self.conn.commit()
+
+    # ---- 하네스 토론 / 회고 교훈 ----
+    def save_debate(self, cycle_date: str, analysis_point: int, symbol: str,
+                    draft_return: float, draft_conf: float,
+                    final_return: float, final_conf: float,
+                    final_dir: str, bull: str, bear: str, verdict: str) -> None:
+        self.conn.execute(
+            "INSERT OR REPLACE INTO harness_debates (cycle_date, analysis_point,"
+            " symbol, draft_return_pct, draft_confidence, final_return_pct,"
+            " final_confidence, final_direction, bull_case, bear_case, verdict,"
+            " created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (cycle_date, analysis_point, symbol, draft_return, draft_conf,
+             final_return, final_conf, final_dir, bull, bear, verdict, _now()),
+        )
+        self.conn.commit()
+
+    def debates_for_cycle(self, cycle_date: str) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT * FROM harness_debates WHERE cycle_date=?"
+            " ORDER BY symbol, analysis_point", (cycle_date,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def add_lesson(self, cycle_date: str, symbol: str, lesson: str,
+                   abs_error: float) -> None:
+        self.conn.execute(
+            "INSERT INTO harness_lessons (cycle_date, symbol, lesson, abs_error,"
+            " created_at) VALUES (?,?,?,?,?)",
+            (cycle_date, symbol, lesson, abs_error, _now()),
+        )
+        self.conn.commit()
+
+    def recent_lessons(self, symbol: str | None = None,
+                       limit: int = 5) -> list[str]:
+        """심판 프롬프트에 주입할 최근 회고 교훈. 종목별 우선, 부족하면 전체."""
+        if symbol:
+            rows = self.conn.execute(
+                "SELECT lesson FROM harness_lessons WHERE symbol=?"
+                " ORDER BY id DESC LIMIT ?", (symbol, limit),
+            ).fetchall()
+            if rows:
+                return [r["lesson"] for r in rows]
+        rows = self.conn.execute(
+            "SELECT lesson FROM harness_lessons ORDER BY id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        return [r["lesson"] for r in rows]

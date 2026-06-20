@@ -170,4 +170,30 @@ footer { padding: 24px; border-top: 1px solid var(--border); margin-top: 24px; }
   .schedule-grid { grid-template-columns: 1fr; }
   table { font-size: 12px; }
   th, td { padding: 6px 6px; }
+  .debate-cases { grid-template-columns: 1fr; }
+}
+
+/* ── 토론 하네스(강세·약세·심판) ── */
+.debate-block {
+  margin: 10px 0; padding: 10px 12px;
+  background: rgba(120, 130, 255, 0.06);
+  border: 1px solid rgba(120, 130, 255, 0.25); border-radius: 8px;
+}
+.debate-cases {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 8px; margin-top: 8px;
+}
+.debate-case {
+  background: var(--card); border-radius: 6px; padding: 8px 10px;
+  border-left: 3px solid var(--muted, #888);
+}
+.debate-case.bull { border-left-color: var(--up, #18a558); }
+.debate-case.bear { border-left-color: var(--down, #e0524a); }
+.debate-case.judge { border-left-color: var(--accent, #6c7bff); }
+.debate-case b { display: block; margin-bottom: 4px; font-size: 12px; }
+.debate-case p { margin: 0; font-size: 12px; line-height: 1.5; color: var(--fg); }
+.harness-tag {
+  display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 4px;
+  background: rgba(120, 130, 255, 0.18); color: var(--accent, #6c7bff);
+  margin: 0 4px;
 }

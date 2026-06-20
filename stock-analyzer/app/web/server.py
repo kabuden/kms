@@ -13,6 +13,7 @@ JSON API + 정적 파일을 함께 제공한다. FastAPI 등 외부 의존성이
   GET /api/schedule        오늘 스케줄 현황 + 최근 실행 로그
   GET /api/reports         일일 리포트 목록(요약)
   GET /api/report?date=... 특정/최신 일일 리포트(마크다운 본문)
+  GET /api/debates?date=.. 토론 하네스(강세·약세·심판) 근거 + 회고 교훈
   POST /api/run-cycle      새 사이클 실행(예측+평가+발전)
   POST /api/run-slot       특정 분석 시점 즉시 실행 {"point": 1~4, "date": "..."}
 """
@@ -59,6 +60,8 @@ def _build_overview(store: Storage) -> dict:
     return {
         "offline": SETTINGS.offline,
         "use_llm": SETTINGS.use_llm,
+        "use_harness": SETTINGS.use_harness,
+        "harness_points": sorted(SETTINGS.harness_points),
         "cycles": len(store.cycle_dates()),
         "min_cycles_for_trust": SETTINGS.min_cycles_for_trust,
         "min_accuracy_for_trust": SETTINGS.min_accuracy_for_trust,
@@ -164,6 +167,14 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(portfolio_suggest(store, d))
             elif path == "/api/discoveries":
                 self._json({"discoveries": store.get_discoveries()})
+            elif path == "/api/debates":
+                d = (qs.get("date") or [None])[0]
+                if not d:
+                    dates = store.cycle_dates()
+                    d = dates[-1] if dates else None
+                self._json({"cycle_date": d,
+                            "debates": store.debates_for_cycle(d) if d else [],
+                            "lessons": store.recent_lessons(limit=15)})
             else:
                 self._json({"error": "not found"}, 404)
         except Exception as exc:  # 견고성: 500 대신 메시지 반환
@@ -270,6 +281,11 @@ class Handler(BaseHTTPRequestHandler):
             for ap, lst in by_pt.items():
                 lst.sort(key=lambda x: horizon_order.get(x["horizon"], 99))
 
+        # 토론 하네스 근거(강세·약세·심판) — 종목별 최신 시점 1건
+        debate_by_symbol: dict[str, dict] = {}
+        for d in store.debates_for_cycle(cycle_date):
+            debate_by_symbol[d["symbol"]] = d   # 정렬상 뒤 시점이 덮어씀
+
         official_key = OFFICIAL_PREDICT_POINT
         first_key = FIRST_PREDICT_POINT
         official_id = next(p.id for p in PREDICT_POINTS if p.key == official_key)
@@ -322,6 +338,8 @@ class Handler(BaseHTTPRequestHandler):
                 "points": points,                # 시점별 예측 변화
                 # 공식 시점 기준 기간별 목표주가(있으면)
                 "horizons": horizons_by_symbol.get(sym, {}).get(official_id, []),
+                # 강세·약세·심판 토론 근거(하네스 활성 시)
+                "debate": debate_by_symbol.get(sym),
             })
         return {"cycle_date": cycle_date, "rows": rows,
                 "points_meta": [{"id": p.id, "key": p.key, "label": p.label,
@@ -374,6 +392,13 @@ def serve(host: str = "0.0.0.0", port: int = 8000) -> None:
         print("☁️  " + selftest())
     except Exception as exc:
         print(f"⚠️  github_sync 진단 실패: {exc}")
+    # 토론 하네스(Groq) 상태 진단 — 활성화돼 있을 때만
+    if SETTINGS.use_harness:
+        try:
+            from ..llm import GroqClient
+            print("🤝 " + GroqClient().selftest())
+        except Exception as exc:
+            print(f"⚠️  groq 진단 실패: {exc}")
     # 콜드 스타트면 영구 백업에서 먼저 복원(없으면 빈 DB로 진행)
     _restore_if_available()
     # DB 스키마 초기화(연결은 요청마다 새로 연다)

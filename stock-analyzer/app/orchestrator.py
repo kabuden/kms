@@ -35,6 +35,7 @@ from .config import (
 )
 from .ensemble import combine
 from .evaluation import evaluate_cycle, evaluate_due_horizons
+from .harness import DebateHarness
 from .horizons import project
 from .market_data import price_history
 from .report import generate_and_store
@@ -66,6 +67,8 @@ class Orchestrator:
         self.weight_optimizer = WeightOptimizer()
         self.strategy_critic = StrategyCritic()
         self.confidence_calibrator = ConfidenceCalibrator()
+        # 강세·약세·심판 토론 하네스(Groq). 키 없으면 자동 비활성.
+        self.harness = DebateHarness()
 
     # ---- 신규 종목 발견 스캔 ----
     def _scan_discoveries(self, cycle_date: str) -> None:
@@ -150,6 +153,23 @@ class Orchestrator:
                 preds.append(p)
             ens = combine(cycle_date, spec.symbol, preds, weights,
                           volatility=_volatility(history))
+            # 토론 하네스: 이 시점이 대상이면 강세·약세·심판이 초안을 교정
+            if (SETTINGS.use_harness and point.id in SETTINGS.harness_points
+                    and self.harness.enabled):
+                lessons = self.store.recent_lessons(spec.symbol, limit=5)
+                verdict = self.harness.run(
+                    spec.symbol, spec.name, spec.market, ens,
+                    history, news, views, lessons)
+                if verdict.used_llm:
+                    self.store.save_debate(
+                        cycle_date, point.id, spec.symbol,
+                        ens.expected_return_pct, ens.confidence,
+                        verdict.expected_return_pct, verdict.confidence,
+                        verdict.direction, verdict.bull_case,
+                        verdict.bear_case, verdict.verdict)
+                    ens.expected_return_pct = verdict.expected_return_pct
+                    ens.confidence = verdict.confidence
+                    ens.direction = verdict.direction
             # 시점 간 방향 전환 → 사전 확신도 감점
             pd = prior_dir.get(spec.symbol)
             if pd and pd != ens.direction:
@@ -172,6 +192,34 @@ class Orchestrator:
         return {"point": point.id, "key": point.key, "label": point.label,
                 "news_saved": news_saved, "ensemble": summary}
 
+    # ---- 회고 루프: 가장 크게 빗나간 종목에서 교훈을 뽑아 저장 ----
+    def _run_reflection(self, cycle_date: str) -> int:
+        """공식 앙상블 예측 vs 실제 괴리가 큰 종목을 돌아보고 교훈을 쌓는다."""
+        if not (SETTINGS.use_harness and self.harness.enabled):
+            return 0
+        name_by_symbol = {s.symbol: s.name for s in SETTINGS.universe}
+        market_by_symbol = {s.symbol: s.market for s in SETTINGS.universe}
+        rows = self.store.ensemble_for_cycle(cycle_date, OFFICIAL_PREDICT_POINT)
+        misses = []
+        for e in rows:
+            actual = self.store.actual(cycle_date, e["symbol"])
+            if actual is None:
+                continue
+            err = abs(e["expected_return_pct"] - actual)
+            misses.append((err, e["symbol"], e["expected_return_pct"], actual))
+        misses.sort(reverse=True)
+        learned = 0
+        for err, symbol, predicted, actual in misses[:SETTINGS.harness_reflect_top_n]:
+            news = self.store.news_for_symbol(
+                cycle_date, market_by_symbol.get(symbol, "US"), symbol)
+            lesson = self.harness.reflect(
+                symbol, name_by_symbol.get(symbol, symbol),
+                predicted, actual, news)
+            if lesson:
+                self.store.add_lesson(cycle_date, symbol, lesson, round(err, 3))
+                learned += 1
+        return learned
+
     # ---- ④ 평가 + 발전 + 장기예측 정산 ----
     def run_phase4_evaluate(self, cycle_date: str) -> dict:
         eval_result = evaluate_cycle(self.store, cycle_date)
@@ -179,11 +227,14 @@ class Orchestrator:
         self.weight_optimizer.run(self.store, cycle_date, predictor_names)
         self.strategy_critic.run(self.store, cycle_date, predictor_names)
         conf = self.confidence_calibrator.run(self.store, cycle_date)
+        # 회고 루프: 빗나간 예측에서 교훈을 뽑아 다음 토론에 반영(학습)
+        lessons_learned = self._run_reflection(cycle_date)
         # 만기 도래한 장기 기간 예측을 실제 종가로 정산(학습엔 미반영)
         horizon_eval = evaluate_due_horizons(self.store, cycle_date)
         # 사이클 마감 리포트 생성·저장
         report = generate_and_store(self.store, cycle_date)
         return {"evaluation": eval_result, "confidence": conf,
+                "lessons_learned": lessons_learned,
                 "horizon_settlement": horizon_eval,
                 "report_summary": report["summary"]}
 
@@ -221,6 +272,7 @@ class Orchestrator:
             "points": points,
             "evaluation": p4["evaluation"],
             "confidence": p4["confidence"],
+            "lessons_learned": p4.get("lessons_learned", 0),
             "horizon_settlement": p4["horizon_settlement"],
             "report_summary": p4["report_summary"],
         }

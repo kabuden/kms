@@ -242,10 +242,27 @@ function renderDetail(rows) {
         </div>`
       : "";
 
+    const d = row.debate;
+    const debateBlock = d
+      ? `<div class="debate-block">
+          <div class="point-head"><b>🤝 토론 하네스 (강세·약세·심판)</b>
+            <span class="muted">초안 ${pct(d.draft_return_pct)} → 최종
+              <span class="${dirClass(d.final_direction)}">${dirLabel(d.final_direction)} ${pct(d.final_return_pct)}</span>
+              · 신뢰 ${Math.round((d.final_confidence||0)*100)}%</span></div>
+          <div class="debate-cases">
+            <div class="debate-case bull"><b>📈 강세</b><p>${d.bull_case || "—"}</p></div>
+            <div class="debate-case bear"><b>📉 약세</b><p>${d.bear_case || "—"}</p></div>
+            <div class="debate-case judge"><b>⚖️ 심판</b><p>${d.verdict || "—"}</p></div>
+          </div>
+        </div>`
+      : "";
+
     box.insertAdjacentHTML("beforeend",
       `<details class="detail-symbol">
         <summary>${row.name} (${row.symbol}) — 공식 ${dirLabel(row.ensemble.direction)} ${pct(row.ensemble.expected_return_pct)}
+          ${d ? '<span class="harness-tag">🤝 토론</span>' : ''}
           · 다음종가 목표 ${price((row.horizons||[]).find(h=>h.horizon==="close")?.target_price)}</summary>
+        ${debateBlock}
         ${hzTable}
         <div class="points-evolution">${pointBlocks}</div>
       </details>`);
