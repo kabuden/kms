@@ -104,6 +104,57 @@ CREATE TABLE IF NOT EXISTS harness_lessons (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     cycle_date TEXT, symbol TEXT, lesson TEXT, abs_error REAL, created_at TEXT
 );
+CREATE TABLE IF NOT EXISTS earnings_events (
+    symbol TEXT NOT NULL,
+    event_date TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    surprise_pct REAL,
+    actual_eps REAL,
+    expected_eps REAL,
+    sector TEXT,
+    source TEXT,
+    created_at TEXT,
+    PRIMARY KEY (symbol, event_date)
+);
+CREATE TABLE IF NOT EXISTS insider_trades (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol TEXT NOT NULL,
+    filed_date TEXT NOT NULL,
+    transaction_date TEXT NOT NULL,
+    filer TEXT,
+    role TEXT,
+    transaction_type TEXT,
+    shares REAL,
+    price_per_share REAL,
+    total_value REAL,
+    is_scheduled INTEGER DEFAULT 0,
+    form_type TEXT,
+    created_at TEXT,
+    UNIQUE(symbol, transaction_date, filer, transaction_type)
+);
+CREATE TABLE IF NOT EXISTS event_car_records (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol TEXT NOT NULL,
+    event_date TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    sector TEXT,
+    surprise_pct REAL,
+    day_offset INTEGER NOT NULL,
+    car REAL NOT NULL,
+    created_at TEXT,
+    UNIQUE(symbol, event_date, day_offset)
+);
+CREATE TABLE IF NOT EXISTS event_patterns (
+    event_type TEXT NOT NULL,
+    sector TEXT NOT NULL,
+    avg_car_d1 REAL,
+    avg_car_d5 REAL,
+    avg_car_d10 REAL,
+    hit_rate REAL,
+    sample_count INTEGER,
+    updated_at TEXT,
+    PRIMARY KEY (event_type, sector)
+);
 """
 
 
@@ -544,6 +595,148 @@ class Storage:
     def scheduler_history(self, limit: int = 30) -> list[dict]:
         rows = self.conn.execute(
             "SELECT * FROM scheduler_log ORDER BY id DESC LIMIT ?", (limit,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    # ---- 이벤트 카탈로그 (실적·내부자거래·CAR 패턴) ----
+
+    def save_earnings_events(self, events: list, sector: str = "") -> None:
+        """실적 발표 이벤트 upsert (기존 레코드는 덮어씀)."""
+        if not events:
+            return
+        now = _now()
+        self.conn.executemany(
+            "INSERT OR REPLACE INTO earnings_events"
+            " (symbol, event_date, event_type, surprise_pct, actual_eps,"
+            " expected_eps, sector, source, created_at)"
+            " VALUES (?,?,?,?,?,?,?,?,?)",
+            [(e.symbol, e.event_date, e.event_type, e.surprise_pct,
+              e.actual_eps, e.expected_eps, sector, e.source, now)
+             for e in events],
+        )
+        self.conn.commit()
+
+    def recent_earnings_for_symbol(
+            self, symbol: str, days_back: int = 20) -> list[dict]:
+        """symbol의 최근 days_back 일 이내 실적 이벤트(최신순)."""
+        from datetime import datetime, timedelta
+        cutoff = (datetime.utcnow().date() - timedelta(days=days_back)).isoformat()
+        rows = self.conn.execute(
+            "SELECT * FROM earnings_events WHERE symbol=? AND event_date>=?"
+            " ORDER BY event_date DESC",
+            (symbol, cutoff),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def save_insider_trades(self, trades: list) -> None:
+        """내부자 거래 upsert (동일 symbol+date+filer+type 은 무시)."""
+        if not trades:
+            return
+        now = _now()
+        self.conn.executemany(
+            "INSERT OR IGNORE INTO insider_trades"
+            " (symbol, filed_date, transaction_date, filer, role,"
+            " transaction_type, shares, price_per_share, total_value,"
+            " is_scheduled, form_type, created_at)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            [(t.symbol, t.filed_date, t.transaction_date, t.filer, t.role,
+              t.transaction_type, t.shares, t.price_per_share, t.total_value,
+              int(t.is_scheduled), t.form_type, now)
+             for t in trades],
+        )
+        self.conn.commit()
+
+    def recent_insiders_for_symbol(
+            self, symbol: str, days_back: int = 45) -> list[dict]:
+        """symbol의 최근 days_back 일 이내 내부자 거래(신고일 기준, 최신순)."""
+        from datetime import datetime, timedelta
+        cutoff = (datetime.utcnow().date() - timedelta(days=days_back)).isoformat()
+        rows = self.conn.execute(
+            "SELECT * FROM insider_trades WHERE symbol=? AND filed_date>=?"
+            " ORDER BY filed_date DESC",
+            (symbol, cutoff),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def save_event_car_records(
+            self, symbol: str, event_date: str, event_type: str,
+            sector: str, surprise_pct: float,
+            car: dict[int, float]) -> None:
+        """이벤트별 일자별 CAR 저장(upsert)."""
+        if not car:
+            return
+        now = _now()
+        self.conn.executemany(
+            "INSERT OR REPLACE INTO event_car_records"
+            " (symbol, event_date, event_type, sector, surprise_pct,"
+            " day_offset, car, created_at)"
+            " VALUES (?,?,?,?,?,?,?,?)",
+            [(symbol, event_date, event_type, sector, surprise_pct,
+              offset, val, now)
+             for offset, val in car.items()],
+        )
+        self.conn.commit()
+
+    def event_pattern(self, event_type: str, sector: str) -> dict | None:
+        """특정 (event_type, sector) 조합의 집계 패턴. 없으면 None."""
+        row = self.conn.execute(
+            "SELECT * FROM event_patterns WHERE event_type=? AND sector=?",
+            (event_type, sector),
+        ).fetchone()
+        return dict(row) if row else None
+
+    def update_event_patterns(self) -> int:
+        """event_car_records 에서 (event_type, sector) 별 패턴을 집계·갱신.
+
+        반환: 업데이트된 패턴 수
+        """
+        rows = self.conn.execute(
+            "SELECT event_type, sector, surprise_pct,"
+            " MAX(CASE WHEN day_offset=1  THEN car END) AS car_d1,"
+            " MAX(CASE WHEN day_offset=5  THEN car END) AS car_d5,"
+            " MAX(CASE WHEN day_offset=10 THEN car END) AS car_d10"
+            " FROM event_car_records"
+            " GROUP BY symbol, event_date, event_type, sector, surprise_pct"
+        ).fetchall()
+
+        if not rows:
+            return 0
+
+        from .events import aggregate_car_records
+        records = [
+            {"event_type": r["event_type"], "sector": r["sector"],
+             "surprise_pct": r["surprise_pct"],
+             "car_d1": r["car_d1"], "car_d5": r["car_d5"],
+             "car_d10": r["car_d10"]}
+            for r in rows
+        ]
+        patterns = aggregate_car_records(records)
+
+        now = _now()
+        self.conn.executemany(
+            "INSERT OR REPLACE INTO event_patterns"
+            " (event_type, sector, avg_car_d1, avg_car_d5, avg_car_d10,"
+            " hit_rate, sample_count, updated_at)"
+            " VALUES (?,?,?,?,?,?,?,?)",
+            [(etype, sector, p["avg_car_d1"], p["avg_car_d5"], p["avg_car_d10"],
+              p["hit_rate"], p["sample_count"], now)
+             for (etype, sector), p in patterns.items()],
+        )
+        self.conn.commit()
+        return len(patterns)
+
+    def all_event_patterns(self) -> list[dict]:
+        """대시보드용 전체 이벤트 패턴 테이블."""
+        rows = self.conn.execute(
+            "SELECT * FROM event_patterns ORDER BY event_type, sector"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def earnings_events_summary(self, limit: int = 30) -> list[dict]:
+        """최근 실적 이벤트 요약(대시보드용)."""
+        rows = self.conn.execute(
+            "SELECT * FROM earnings_events ORDER BY event_date DESC LIMIT ?",
+            (limit,)
         ).fetchall()
         return [dict(r) for r in rows]
 

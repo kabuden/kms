@@ -17,7 +17,8 @@ class PredictorContext:
     def __init__(self, cycle_date: str, symbol: str, market: str,
                  history: list[float], news: list[NewsItem],
                  analyst_views: list[AnalystView],
-                 params: dict[str, tuple[float, float]] | None = None):
+                 params: dict[str, tuple[float, float]] | None = None,
+                 event_signals: dict | None = None):
         self.cycle_date = cycle_date
         self.symbol = symbol
         self.market = market
@@ -26,6 +27,8 @@ class PredictorContext:
         self.analyst_views = analyst_views
         # predictor 이름 -> (scale, sign): 발전 에이전트가 학습한 자가보정값
         self.params = params or {}
+        # 이벤트 신호: 실적 발표 후 표류(PEAD) + 내부자 거래 패턴
+        self.event_signals: dict = event_signals or {}
 
 
 class BasePredictor(Agent):

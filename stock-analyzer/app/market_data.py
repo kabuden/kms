@@ -119,6 +119,20 @@ def close_on(symbol: str, target_date: str) -> float | None:
     return series[-1] if series else None
 
 
+def price_series(symbol: str, end_day: str | None = None) -> list[tuple[str, float]]:
+    """심볼의 (ISO날짜, 종가) 시계열(오름차순). CAR 계산에 사용.
+
+    온라인: Yahoo Finance 1년 일봉. 오프라인 또는 실패 시 빈 리스트.
+    end_day 지정 시 해당일 이하 거래일만 반환.
+    """
+    if SETTINGS.offline:
+        return []
+    series = _fetch_yahoo_series(symbol)
+    if end_day:
+        series = [(d, c) for d, c in series if d <= end_day]
+    return series
+
+
 def realized_return_pct(symbol: str, cycle_date: str) -> float | None:
     """cycle_date 에 내린 예측의 실현 수익률(%) = 다음 거래일 종가 변화율.
 

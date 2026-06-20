@@ -19,6 +19,7 @@ from __future__ import annotations
 from statistics import pstdev
 
 from .agents.collectors import KRMarketCollector, USMarketCollector
+from .agents.collectors.event_collector import collect_events
 from .agents.improvers import (
     ConfidenceCalibrator,
     StrategyCritic,
@@ -32,12 +33,14 @@ from .config import (
     OFFICIAL_PREDICT_POINT,
     SETTINGS,
     AnalysisPoint,
+    TickerSpec,
 )
 from .ensemble import combine
 from .evaluation import evaluate_cycle, evaluate_due_horizons
+from .events import compute_car
 from .harness import DebateHarness
 from .horizons import project
-from .market_data import price_history
+from .market_data import price_history, price_series
 from .report import generate_and_store
 from .storage import Storage
 
@@ -69,6 +72,128 @@ class Orchestrator:
         self.confidence_calibrator = ConfidenceCalibrator()
         # 강세·약세·심판 토론 하네스(Groq). 키 없으면 자동 비활성.
         self.harness = DebateHarness()
+
+    # ---- 이벤트 신호 조회 (예측 루프에서 ctx에 주입) ----
+    def _get_event_signals(self, cycle_date: str, spec: TickerSpec) -> dict:
+        """DB에서 해당 종목의 최근 이벤트 신호를 조회해 dict로 반환."""
+        from datetime import date
+
+        # 최근 실적 이벤트 (이벤트일 기준 ±15일 창)
+        recent = self.store.recent_earnings_for_symbol(spec.symbol, days_back=20)
+        earnings_signal = None
+        for ev in recent:
+            try:
+                event_dt = date.fromisoformat(ev["event_date"])
+                cycle_dt = date.fromisoformat(cycle_date)
+                days_since = (cycle_dt - event_dt).days
+                if -2 <= days_since <= 15:
+                    pattern = self.store.event_pattern(
+                        ev["event_type"], spec.sector)
+                    earnings_signal = {
+                        "event_date": ev["event_date"],
+                        "event_type": ev["event_type"],
+                        "days_since": days_since,
+                        "surprise_pct": ev.get("surprise_pct") or 0.0,
+                    }
+                    if pattern:
+                        earnings_signal["historical_car"] = {
+                            "avg_car_d1": pattern["avg_car_d1"],
+                            "avg_car_d5": pattern["avg_car_d5"],
+                            "avg_car_d10": pattern["avg_car_d10"],
+                            "hit_rate": pattern["hit_rate"],
+                            "sample_count": pattern["sample_count"],
+                        }
+                    break
+            except (ValueError, TypeError):
+                continue
+
+        # 최근 내부자 거래 신호
+        insiders = self.store.recent_insiders_for_symbol(spec.symbol, days_back=45)
+        insider_signal = None
+        if insiders:
+            buys = [t for t in insiders
+                    if t.get("transaction_type") == "P"
+                    and not t.get("is_scheduled")]
+            sells = [t for t in insiders
+                     if t.get("transaction_type") == "S"
+                     and not t.get("is_scheduled")]
+            if buys:
+                insider_signal = {
+                    "type": "P",
+                    "count": len(buys),
+                    "total_value": sum(t.get("total_value") or 0 for t in buys),
+                    "filer_role": buys[0].get("role", "Unknown"),
+                    "is_scheduled": False,
+                }
+            elif sells:
+                insider_signal = {
+                    "type": "S",
+                    "count": len(sells),
+                    "total_value": sum(t.get("total_value") or 0 for t in sells),
+                    "filer_role": sells[0].get("role", "Unknown"),
+                    "is_scheduled": False,
+                }
+
+        return {
+            "recent_earnings": earnings_signal,
+            "recent_insider": insider_signal,
+        }
+
+    # ---- 이벤트 수집 + CAR 계산 + 패턴 갱신 (Phase 4에서 호출) ----
+    def _collect_and_compute_events(self, cycle_date: str) -> int:
+        """각 종목의 실적·내부자 거래를 수집하고 CAR을 계산해 패턴 DB를 갱신.
+
+        반환: 새로 계산한 CAR 이벤트 수
+        """
+        benchmark_symbols = {"US": "^GSPC", "KR": "^KS11"}
+        bench_series_cache: dict[str, list] = {}
+        car_count = 0
+
+        for spec in SETTINGS.universe:
+            if spec.symbol.startswith("^"):
+                continue
+            try:
+                events_data = collect_events(spec.symbol, spec.market)
+            except Exception:
+                continue
+
+            # 실적 이벤트 저장
+            earnings = events_data.get("earnings", [])
+            if earnings:
+                self.store.save_earnings_events(earnings, sector=spec.sector)
+
+                # CAR 계산 (온라인 모드에서만)
+                if not SETTINGS.offline:
+                    bench_sym = benchmark_symbols.get(spec.market, "^GSPC")
+                    if bench_sym not in bench_series_cache:
+                        bench_series_cache[bench_sym] = price_series(bench_sym)
+                    bench_s = bench_series_cache[bench_sym]
+                    sym_s = price_series(spec.symbol, end_day=cycle_date)
+
+                    for ev in earnings:
+                        try:
+                            car = compute_car(
+                                sym_s, bench_s, ev.event_date,
+                                window_pre=1, window_post=10)
+                            if car:
+                                self.store.save_event_car_records(
+                                    spec.symbol, ev.event_date,
+                                    ev.event_type, spec.sector,
+                                    ev.surprise_pct, car)
+                                car_count += 1
+                        except Exception:
+                            continue
+
+            # 내부자 거래 저장
+            insiders = events_data.get("insiders", [])
+            if insiders:
+                self.store.save_insider_trades(insiders)
+
+        # 패턴 집계
+        if car_count > 0:
+            self.store.update_event_patterns()
+
+        return car_count
 
     # ---- 신규 종목 발견 스캔 ----
     def _scan_discoveries(self, cycle_date: str) -> None:
@@ -142,8 +267,10 @@ class Orchestrator:
                 news = self.store.news_for_symbol(
                     cycle_date, spec.market, spec.symbol)
             views = self.store.analyst_views_for_symbol(cycle_date, spec.symbol)
+            event_signals = self._get_event_signals(cycle_date, spec)
             ctx = PredictorContext(cycle_date, spec.symbol, spec.market,
-                                   history, news, views, params)
+                                   history, news, views, params,
+                                   event_signals=event_signals)
             preds = []
             for predictor in self.predictors:
                 p = predictor.predict_one(ctx)
@@ -231,11 +358,14 @@ class Orchestrator:
         lessons_learned = self._run_reflection(cycle_date)
         # 만기 도래한 장기 기간 예측을 실제 종가로 정산(학습엔 미반영)
         horizon_eval = evaluate_due_horizons(self.store, cycle_date)
+        # 이벤트 카탈로그 갱신: 실적·내부자거래 수집 + CAR 계산 + 패턴 DB 갱신
+        event_car_count = self._collect_and_compute_events(cycle_date)
         # 사이클 마감 리포트 생성·저장
         report = generate_and_store(self.store, cycle_date)
         return {"evaluation": eval_result, "confidence": conf,
                 "lessons_learned": lessons_learned,
                 "horizon_settlement": horizon_eval,
+                "event_car_computed": event_car_count,
                 "report_summary": report["summary"]}
 
     # ---- 시점 디스패처 (스케줄러·웹에서 호출) ----
