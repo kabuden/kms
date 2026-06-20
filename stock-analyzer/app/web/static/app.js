@@ -136,7 +136,7 @@ async function loadLatest() {
   const tb = $("#latest-table tbody");
   tb.innerHTML = "";
   if (!d.rows || !d.rows.length) {
-    tb.innerHTML = `<tr><td colspan="9" class="muted">아직 예측이 없습니다. 스케줄이 자동으로 실행됩니다.</td></tr>`;
+    tb.innerHTML = `<tr><td colspan="8" class="muted">아직 예측이 없습니다. 스케줄이 자동으로 실행됩니다.</td></tr>`;
     $("#detail").innerHTML = "";
     return;
   }
@@ -166,12 +166,14 @@ async function loadLatest() {
         + `<span class="muted">(${absErr}%p)</span>`;
     }
     const ownedStar = row.owned ? ' <span class="owned-star" title="보유 종목">⭐</span>' : "";
+    // 예측값(신뢰도): 신뢰도는 예측값에 딸린 속성이므로 같은 칸에 묶는다.
+    const officialCell = `<b>${dirLabel(e.direction)} ${pct(e.expected_return_pct)}</b>`
+      + ` <span class="muted">(신뢰 ${Math.round(e.confidence * 100)}%)</span>`;
     tb.insertAdjacentHTML("beforeend",
       `<tr><td>${row.name}${ownedStar}</td><td>${row.market}</td>
        <td>${baseCell}</td>
-       <td class="${dirClass(e.direction)}"><b>${dirLabel(e.direction)} ${pct(e.expected_return_pct)}</b></td>
+       <td class="${dirClass(e.direction)}">${officialCell}</td>
        <td>${deltaCell}</td>
-       <td>${Math.round(e.confidence * 100)}%</td>
        <td>${pct(actual)}</td><td>${accCell}</td><td>${hit}</td></tr>`);
   }
   renderDetail(d.rows);
