@@ -4,9 +4,17 @@
 #
 # 무료 등급(free) 특성:
 #  - 15분간 요청이 없으면 잠자기 → 다음 접속 시 수십 초 지연 후 깨어남
+#    (외부 모니터링 핑(UptimeRobot 등)으로 5분마다 깨워두면 대기 없음)
 #  - 디스크가 비휘발성이 아니라 재시작/재배포 시 학습 DB가 초기화됨
 #    → SA_SEED_CYCLES 로 첫 화면에 학습 곡선(합성)을 채워 둠
-#  - 학습 누적을 영구 보관하려면 유료 디스크 또는 외부 DB가 필요(아래 주석 참고)
+#
+# ── 학습 DB를 GitHub에 영구 보관(무료) ─────────────────────────
+# SA_GITHUB_TOKEN(Contents 읽기/쓰기 권한 PAT)을 설정하면, 사이클 ④마다
+# 학습 DB 전체를 gzip 스냅샷으로 별도 데이터 브랜치(sa-data)에 커밋하고,
+# 콜드 스타트 때 자동 복원해 학습을 그대로 이어갑니다(유료 디스크 불필요).
+# ⚠️ 토큰은 비밀값이므로 이 파일에 적지 말고 Render 대시보드 > Environment
+#    에서 SA_GITHUB_TOKEN 으로 추가하세요. 데이터는 배포 브랜치가 아닌
+#    sa-data 브랜치로 가므로 재배포 루프가 생기지 않습니다.
 services:
   - type: web
     name: stock-analyzer
@@ -32,10 +40,13 @@ services:
         value: "0.58"
       - key: PYTHON_VERSION
         value: "3.11.9"
+      # 학습 DB 영구 보관용. 토큰은 대시보드에서 비밀값으로 추가하세요.
+      # - key: SA_GITHUB_TOKEN     # ← Render 대시보드 Environment 에 직접 입력
+      - key: SA_GITHUB_DATA_BRANCH  # 데이터 전용 브랜치(자동 생성, 배포와 분리)
+        value: "sa-data"
 
-# ── 학습 영구 보관(선택, 유료) ──────────────────────────────
-# 무료 등급은 디스크가 휘발성입니다. 누적 학습을 유지하려면 아래처럼
-# 영구 디스크를 붙이고 SA_DB_DIR 같은 환경변수로 DB 경로를 디스크로 지정하세요.
+# ── 대안: 유료 영구 디스크 ──────────────────────────────────
+# GitHub 스냅샷 대신 영구 디스크를 붙이고 SA_DB_DIR 로 경로를 지정해도 됩니다.
 #    disk:
 #      name: stock-data
 #      mountPath: /var/data

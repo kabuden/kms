@@ -350,7 +350,26 @@ def _seed_if_empty(store: Storage) -> None:
     print(f"🌱 시드 완료: {n} 사이클({mode})")
 
 
+def _restore_if_available() -> None:
+    """콜드 스타트(로컬 DB 없음) 시 GitHub 스냅샷에서 학습 DB를 복원한다.
+
+    Render 무료 티어는 디스크가 휘발성이라 재시작마다 DB가 사라진다.
+    SA_GITHUB_TOKEN 이 설정돼 있고 데이터 브랜치에 스냅샷이 있으면, 그동안
+    쌓은 학습(예측·실제·평가·가중치·신뢰도)을 그대로 이어받는다.
+    """
+    if SETTINGS.db_path.exists():
+        return  # 이미 로컬 DB 가 있으면(웜 스타트) 복원하지 않는다
+    try:
+        from ..github_sync import restore_db_snapshot
+        if restore_db_snapshot(SETTINGS.db_path):
+            print("☁️  GitHub 스냅샷에서 학습 DB 복원 완료")
+    except Exception as exc:  # 복원 실패는 치명적이지 않음(빈 DB로 시작)
+        print(f"⚠️  DB 복원 건너뜀: {exc}")
+
+
 def serve(host: str = "0.0.0.0", port: int = 8000) -> None:
+    # 콜드 스타트면 영구 백업에서 먼저 복원(없으면 빈 DB로 진행)
+    _restore_if_available()
     # DB 스키마 초기화(연결은 요청마다 새로 연다)
     store = Storage(SETTINGS.db_path)
     _seed_if_empty(store)

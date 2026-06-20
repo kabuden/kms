@@ -229,7 +229,7 @@ def _dir(return_pct: float, band: float = 0.2) -> str:
 
 def generate_and_store(store: Storage, cycle_date: str) -> dict:
     """리포트를 생성해 DB 저장 + 로컬 파일 + GitHub에 남긴다."""
-    from .github_sync import push_model_state, push_report
+    from .github_sync import push_db_snapshot, push_model_state, push_report
 
     report = build_report(store, cycle_date)
     store.save_report(cycle_date, report["markdown"], report["summary"])
@@ -255,6 +255,8 @@ def generate_and_store(store: Storage, cycle_date: str) -> dict:
             "calibrated_confidence": conf.get("calibrated_confidence"),
             "trade_ready": bool(conf.get("trade_ready")),
         })
+        # 학습 DB 전체 스냅샷(콜드 스타트 복원용)
+        push_db_snapshot(store.db_path, label=cycle_date)
     except Exception:
         pass  # GitHub 동기화 실패는 치명적이지 않음
 
