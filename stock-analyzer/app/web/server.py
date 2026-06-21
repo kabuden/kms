@@ -289,18 +289,41 @@ class Handler(BaseHTTPRequestHandler):
         official_key = OFFICIAL_PREDICT_POINT
         first_key = FIRST_PREDICT_POINT
         official_id = next(p.id for p in PREDICT_POINTS if p.key == official_key)
+        id_by_key = {p.key: p.id for p in PREDICT_POINTS}
+        # 늦은 시점 → 이른 시점 순. '현재 예측'은 실행된 가장 늦은 시점을 쓴다.
+        points_late_first = list(reversed(PREDICT_POINTS))
 
         rows = []
-        # 공식 시점에 예측된 종목 기준으로 행 구성
-        symbols = list(point_ensembles.get(official_key, {}).keys()) \
-            or list(spec_by_symbol.keys())
+        # 예측이 1건이라도 있는 모든 종목을 대상으로 행 구성.
+        # 공식 시점(③)이 아직 안 돌았어도(예: 08시 개장 전 ①만 실행) 가장 최근
+        # 실행된 시점의 예측을 보여준다. (이전엔 ③이 없으면 전부 스킵되어
+        # 개장 전엔 예측이 비어 보였다.)
+        symbols = []
+        seen = set()
+        for pt in points_late_first:
+            for sym in point_ensembles.get(pt.key, {}):
+                if sym not in seen:
+                    seen.add(sym)
+                    symbols.append(sym)
+        if not symbols:
+            symbols = list(spec_by_symbol.keys())
         for sym in symbols:
             spec = spec_by_symbol.get(sym)
-            official = point_ensembles.get(official_key, {}).get(sym)
+            # '현재' 예측 = 실행된 가장 늦은 예측 시점(③ 우선, 없으면 ②, ①)
+            current = None
+            current_key = None
+            for pt in points_late_first:
+                e = point_ensembles.get(pt.key, {}).get(sym)
+                if e:
+                    current = e
+                    current_key = pt.key
+                    break
             first = point_ensembles.get(first_key, {}).get(sym)
-            if not official:
+            if not current:
                 continue
-            delta = round(official["expected_return_pct"]
+            current_id = id_by_key.get(current_key, official_id)
+            is_official = current_key == official_key
+            delta = round(current["expected_return_pct"]
                           - first["expected_return_pct"], 3) if first else None
             points = []
             for pt in PREDICT_POINTS:
@@ -323,21 +346,23 @@ class Handler(BaseHTTPRequestHandler):
                 "market": spec.market if spec else "",
                 "sector": spec.sector if spec else "",
                 "owned": spec.owned if spec else False,
-                "base_price": official.get("base_price"),
+                "base_price": current.get("base_price"),
                 "first": first,                  # 한국개장전(최초) 예측
-                "ensemble": official,            # 미국개장후(공식) 예측
-                "delta_pct": delta,              # 최초 → 공식 기대수익률 변화
+                "ensemble": current,             # 현재(가장 최근 시점) 예측
+                "current_point": current_id,     # 현재 예측이 나온 시점 id
+                "is_official": is_official,       # 공식(③) 시점 예측인지 여부
+                "delta_pct": delta,              # 최초 → 현재 기대수익률 변화
                 "direction_changed": (first is not None
-                                      and first["direction"] != official["direction"]),
+                                      and first["direction"] != current["direction"]),
                 "actual_return_pct": actual_ret,
                 # 크기 고려 정확도 지수: |예측−실제| 절대값이 같아도
                 # 큰 변동을 맞힌 예측을 더 높게 평가(상대오차 기반)
                 "accuracy_score": (
-                    magnitude_accuracy(official["expected_return_pct"], actual_ret)
+                    magnitude_accuracy(current["expected_return_pct"], actual_ret)
                     if actual_ret is not None else None),
                 "points": points,                # 시점별 예측 변화
-                # 공식 시점 기준 기간별 목표주가(있으면)
-                "horizons": horizons_by_symbol.get(sym, {}).get(official_id, []),
+                # 현재 시점 기준 기간별 목표주가(있으면)
+                "horizons": horizons_by_symbol.get(sym, {}).get(current_id, []),
                 # 강세·약세·심판 토론 근거(하네스 활성 시)
                 "debate": debate_by_symbol.get(sym),
             })

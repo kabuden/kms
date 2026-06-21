@@ -233,10 +233,13 @@ function renderDetail(rows) {
         <td>${actualCell}</td>
       </tr>`;
     }).join("");
+    const curLabel = (row.points || []).find(p => p.point === row.current_point)?.label
+      || "공식";
+    const curTag = row.is_official ? "공식" : `${curLabel}(잠정)`;
     const hzTable = hz
       ? `<div class="horizon-block">
           <div class="point-head"><b>📅 기간별 목표주가</b>
-            <span class="muted">공식(미국개장후) 예측 기준 · 기준가 ${price(row.base_price)}</span></div>
+            <span class="muted">${curTag} 예측 기준 · 기준가 ${price(row.base_price)}</span></div>
           <table><thead><tr><th>기간</th><th>목표일</th><th>목표주가</th><th>예상 변화</th><th>신뢰</th><th>실제</th></tr></thead>
           <tbody>${hz}</tbody></table>
         </div>`
@@ -259,7 +262,7 @@ function renderDetail(rows) {
 
     box.insertAdjacentHTML("beforeend",
       `<details class="detail-symbol">
-        <summary>${row.name} (${row.symbol}) — 공식 ${dirLabel(row.ensemble.direction)} ${pct(row.ensemble.expected_return_pct)}
+        <summary>${row.name} (${row.symbol}) — ${curTag} ${dirLabel(row.ensemble.direction)} ${pct(row.ensemble.expected_return_pct)}
           ${d ? '<span class="harness-tag">🤝 토론</span>' : ''}
           · 다음종가 목표 ${price((row.horizons||[]).find(h=>h.horizon==="close")?.target_price)}</summary>
         ${debateBlock}
