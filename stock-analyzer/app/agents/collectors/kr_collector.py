@@ -18,10 +18,3 @@ class KRMarketCollector(BaseCollector):
         ("연합뉴스 경제", "https://www.yna.co.kr/rss/economy.xml"),
     ]
 
-    headline_templates = [
-        "코스피 외국인 순매수에 강세… 반도체주 급등",
-        "원/달러 환율 상승, 수출주 우려 부각",
-        "삼성전자 메모리 업황 개선 기대감에 상승",
-        "한국은행 금리 동결, 시장 호재로 작용",
-        "2차전지 업종 부진… 실적 우려에 약세",
-    ]

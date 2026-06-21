@@ -216,27 +216,26 @@ class Orchestrator:
             if earnings:
                 self.store.save_earnings_events(earnings, sector=spec.sector)
 
-                # CAR 계산 (온라인 모드에서만)
-                if not SETTINGS.offline:
-                    bench_sym = benchmark_symbols.get(spec.market, "^GSPC")
-                    if bench_sym not in bench_series_cache:
-                        bench_series_cache[bench_sym] = price_series(bench_sym)
-                    bench_s = bench_series_cache[bench_sym]
-                    sym_s = price_series(spec.symbol, end_day=cycle_date)
+                # CAR 계산
+                bench_sym = benchmark_symbols.get(spec.market, "^GSPC")
+                if bench_sym not in bench_series_cache:
+                    bench_series_cache[bench_sym] = price_series(bench_sym)
+                bench_s = bench_series_cache[bench_sym]
+                sym_s = price_series(spec.symbol, end_day=cycle_date)
 
-                    for ev in earnings:
-                        try:
-                            car = compute_car(
-                                sym_s, bench_s, ev.event_date,
-                                window_pre=1, window_post=10)
-                            if car:
-                                self.store.save_event_car_records(
-                                    spec.symbol, ev.event_date,
-                                    ev.event_type, spec.sector,
-                                    ev.surprise_pct, car)
-                                car_count += 1
-                        except Exception:
-                            continue
+                for ev in earnings:
+                    try:
+                        car = compute_car(
+                            sym_s, bench_s, ev.event_date,
+                            window_pre=1, window_post=10)
+                        if car:
+                            self.store.save_event_car_records(
+                                spec.symbol, ev.event_date,
+                                ev.event_type, spec.sector,
+                                ev.surprise_pct, car)
+                            car_count += 1
+                    except Exception:
+                        continue
 
             # 내부자 거래 저장
             insiders = events_data.get("insiders", [])
@@ -244,13 +243,12 @@ class Orchestrator:
                 self.store.save_insider_trades(insiders)
 
             # 펀더멘털 스냅샷(밸류·퀄리티 팩터용) 갱신
-            if not SETTINGS.offline:
-                try:
-                    fund = fetch_fundamentals(spec.symbol)
-                    if fund:
-                        self.store.save_fundamentals(fund)
-                except Exception:
-                    pass
+            try:
+                fund = fetch_fundamentals(spec.symbol)
+                if fund:
+                    self.store.save_fundamentals(fund)
+            except Exception:
+                pass
 
         # 패턴 집계
         if car_count > 0:

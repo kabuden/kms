@@ -1,6 +1,6 @@
 """펀더멘털 수집기 — Yahoo Finance quoteSummary로 밸류·퀄리티 지표 수집.
 
-표준 라이브러리(urllib, json)만 사용. SA_OFFLINE=true 면 건너뛴다.
+표준 라이브러리(urllib, json)만 사용.
 밸류 팩터(PER·PBR·PSR)와 퀄리티 팩터(ROE·부채비율·이익률)에 쓰는
 재무 스냅샷을 종목별로 1건씩 받아온다(느리게 변하므로 갱신 빈도 낮아도 됨).
 
@@ -14,7 +14,6 @@ import urllib.request
 from dataclasses import dataclass
 from datetime import datetime
 
-from ...config import SETTINGS
 
 _UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
        "(KHTML, like Gecko) Chrome/120.0 Safari/537.36")
@@ -42,8 +41,6 @@ class Fundamentals:
 
 
 def _get(url: str, timeout: int = 12) -> bytes | None:
-    if SETTINGS.offline:
-        return None
     try:
         req = urllib.request.Request(url, headers={
             "User-Agent": _UA, "Accept-Encoding": "identity"})

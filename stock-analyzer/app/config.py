@@ -1,7 +1,6 @@
 """시스템 전역 설정.
 
-환경변수로 동작을 조정한다. 외부 네트워크/LLM 키가 없어도
-오프라인 데모 모드로 완전히 동작하도록 기본값을 잡았다.
+환경변수로 동작을 조정한다.
 """
 from __future__ import annotations
 
@@ -100,8 +99,6 @@ HORIZONS: list[Horizon] = [
 
 @dataclass
 class Settings:
-    # 데이터 소스: 네트워크가 막혀 있으면 자동으로 합성 데이터로 폴백한다.
-    offline: bool = field(default_factory=lambda: _flag("SA_OFFLINE", False))
     # LLM(Anthropic) 사용 여부. 키가 없으면 휴리스틱으로 폴백.
     use_llm: bool = field(default_factory=lambda: _flag("SA_USE_LLM", False))
     anthropic_api_key: str | None = field(

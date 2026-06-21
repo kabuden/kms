@@ -58,7 +58,6 @@ def _build_overview(store: Storage) -> dict:
     e_hits, e_total = store.predictor_accuracy(ENSEMBLE_KEY)
     b_hits, b_total = store.predictor_accuracy(ENSEMBLE_BASELINE_KEY)
     return {
-        "offline": SETTINGS.offline,
         "use_llm": SETTINGS.use_llm,
         "use_harness": SETTINGS.use_harness,
         "harness_points": sorted(SETTINGS.harness_points),
@@ -389,8 +388,7 @@ def _seed_if_empty(store: Storage) -> None:
     start = date.today() - timedelta(days=n)
     for i in range(n):
         orch.run_full_cycle((start + timedelta(days=i)).isoformat())
-    mode = "실시세" if not SETTINGS.offline else "합성"
-    print(f"🌱 시드 완료: {n} 사이클({mode})")
+    print(f"🌱 시드 완료: {n} 사이클")
 
 
 def _restore_if_available() -> None:
@@ -432,7 +430,7 @@ def serve(host: str = "0.0.0.0", port: int = 8000) -> None:
     store.close()
     httpd = ThreadingHTTPServer((host, port), Handler)
     print(f"📈 Stock Analyzer 대시보드: http://{host}:{port}  "
-          f"(offline={SETTINGS.offline}, llm={SETTINGS.use_llm})")
+          f"(llm={SETTINGS.use_llm})")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

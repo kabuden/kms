@@ -1,7 +1,6 @@
 """이벤트 수집기 — 실적 발표(Yahoo Finance·DART) + 내부자 거래(SEC EDGAR Form 4).
 
 표준 라이브러리(urllib, xml.etree.ElementTree, json)만 사용.
-SA_OFFLINE=true 면 모든 네트워크 호출을 건너뛰고 빈 리스트를 반환한다.
 """
 from __future__ import annotations
 
@@ -13,7 +12,6 @@ import urllib.parse
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 
-from ...config import SETTINGS
 from ...events import EarningsEvent, InsiderTrade, categorize_surprise
 
 _UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -21,8 +19,6 @@ _UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
 
 
 def _get(url: str, timeout: int = 12) -> bytes | None:
-    if SETTINGS.offline:
-        return None
     try:
         req = urllib.request.Request(url, headers={
             "User-Agent": _UA,
@@ -232,14 +228,12 @@ def collect_events(symbol: str, market: str) -> dict:
     earnings: list[EarningsEvent] = []
     insiders: list[InsiderTrade] = []
 
-    if not SETTINGS.offline:
-        if market == "US":
-            # 지수(^GSPC 등)는 earnings / insider 없음
-            if not symbol.startswith("^"):
-                earnings = fetch_us_earnings(symbol)
-                insiders = fetch_insider_trades(symbol, days_back=45)
-        elif market == "KR":
-            if not symbol.startswith("^"):
-                earnings = fetch_kr_earnings(symbol)
+    if market == "US":
+        if not symbol.startswith("^"):
+            earnings = fetch_us_earnings(symbol)
+            insiders = fetch_insider_trades(symbol, days_back=45)
+    elif market == "KR":
+        if not symbol.startswith("^"):
+            earnings = fetch_kr_earnings(symbol)
 
     return {"earnings": earnings, "insiders": insiders}

@@ -18,10 +18,3 @@ class USMarketCollector(BaseCollector):
         ("MarketWatch", "https://feeds.content.dowjones.io/public/rss/mw_topstories"),
     ]
 
-    headline_templates = [
-        "Fed signals patience as inflation cools; equities rally",
-        "Big tech earnings beat estimates, Nasdaq gains",
-        "Treasury yields fall on weak jobs data, growth fears linger",
-        "Energy sector slumps as oil prices plunge",
-        "Semiconductor demand strong, chipmakers upgrade guidance",
-    ]
