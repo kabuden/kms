@@ -101,7 +101,7 @@ HORIZONS: list[Horizon] = [
 @dataclass
 class Settings:
     # 데이터 소스: 네트워크가 막혀 있으면 자동으로 합성 데이터로 폴백한다.
-    offline: bool = field(default_factory=lambda: _flag("SA_OFFLINE", True))
+    offline: bool = field(default_factory=lambda: _flag("SA_OFFLINE", False))
     # LLM(Anthropic) 사용 여부. 키가 없으면 휴리스틱으로 폴백.
     use_llm: bool = field(default_factory=lambda: _flag("SA_USE_LLM", False))
     anthropic_api_key: str | None = field(
